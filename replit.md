@@ -1,7 +1,7 @@
 # Nomad Internet Customer Portal
 
 ## Overview
-A customer portal for Nomad Internet customers with sign-in and sign-up functionality. The portal uses the official Nomad Internet branding and integrates with external APIs for customer verification and OTP authentication.
+A customer portal for Nomad Internet customers with sign-in and sign-up functionality. The portal uses official Nomad Internet branding with a modern SaaS-style design.
 
 ## Tech Stack
 - **Frontend**: React 18 + TypeScript
@@ -10,25 +10,36 @@ A customer portal for Nomad Internet customers with sign-in and sign-up function
 - **Routing**: React Router DOM
 - **Build Tool**: Vite
 
-## Branding
-- Primary Color: #00A77F
-- Accent Color: #008061
-- Font: Inter (Google Fonts)
-- Logo: Nomad Internet official logo
+## Design System
+- **Primary Color**: #10a37f (brand green)
+- **Accent Color**: #0a8f6a (deep green)
+- **Background**: #f7faf9 (light mint)
+- **Text**: #0f172a (slate-900)
+- **Muted**: #64748b (slate-500)
+- **Font**: Inter (system fonts fallback)
+- **Logo**: Nomad Internet official logo
+
+### Key Design Elements
+- Glassmorphism card with backdrop blur
+- Gradient left panel with layered radial gradients
+- 34px bold titles (800 weight)
+- 52px tall inputs with subtle focus rings
+- 54px gradient buttons with shadows
+- Stats section with border-top styling
 
 ## Project Structure
 ```
 src/
 ├── components/
-│   ├── AuthLayout.tsx    # Shared auth page layout with branding
-│   ├── Button.tsx        # Animated button component
-│   └── Input.tsx         # Styled input with tooltips
+│   ├── AuthLayout.tsx    # Two-column layout with glassmorphism card
+│   ├── Button.tsx        # Gradient button with hover animations
+│   └── Input.tsx         # Tall styled input with tooltips
 ├── pages/
 │   ├── SignIn.tsx        # Sign-in page
 │   └── SignUp.tsx        # Multi-step sign-up flow
 ├── App.tsx               # Router configuration
 ├── main.tsx              # App entry point
-└── index.css             # Global styles + Tailwind
+└── index.css             # Global styles + design tokens
 ```
 
 ## Sign-Up Flow
@@ -49,7 +60,10 @@ npm run dev
 Runs on port 5000.
 
 ## Recent Changes
-- Initial setup with React + TypeScript + Tailwind
-- Created sign-in and sign-up pages with Nomad branding
-- Implemented multi-step sign-up flow with API integrations
-- Added animations, hover effects, and tooltips
+- Jan 24, 2026: Complete redesign using SaaS-style CSS reference
+  - Updated design tokens (colors, shadows, spacing)
+  - Added glassmorphism card wrapper
+  - Redesigned inputs (52px height) and buttons (54px, gradient)
+  - Bold typography (34px titles, 800 weight)
+  - Stats with border-top styling
+  - Layered gradient backgrounds
