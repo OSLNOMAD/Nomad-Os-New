@@ -48,6 +48,12 @@ npm run dev
 ```
 Runs on port 5000.
 
+## Design System
+- **Card Container**: Form wrapped in soft card with rounded-2xl corners, shadow-xl, subtle border
+- **Input Icons**: Email (envelope), Password (lock), Phone, Verification code icons
+- **Layout**: Two-column (42%/58%) with left-aligned branding, stats with dividers
+- **Aesthetic**: Premium, spacious, calm SaaS design
+
 ## Recent Changes
 - Initial setup with React + TypeScript + Tailwind
 - Created sign-in and sign-up pages with Nomad branding
@@ -56,3 +62,8 @@ Runs on port 5000.
 - Fixed UI spacing: Replaced icon box with "Nomad Internet" text branding on left panel
 - Improved spacing and centering across all form elements
 - Enhanced visual hierarchy with proper padding and margins
+- **Major redesign**: Implemented premium SaaS login experience matching reference design
+  - Card container with shadow on right panel
+  - Left-aligned branding with stat dividers (24/7 | 99.9% | 50+)
+  - Icons inside input fields (email, lock, phone, code)
+  - Increased spacing and breathing room throughout
