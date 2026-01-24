@@ -486,6 +486,8 @@ body {
 }
 
 .dashboard-header {
+  position: relative;
+  z-index: 1000;
   border-bottom: 1px solid rgba(15, 23, 42, 0.08);
   background: rgba(255, 255, 255, 0.8);
   backdrop-filter: blur(12px);
@@ -629,16 +631,17 @@ body {
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
-  color: white;
+  background: #6b7280 url('/avatar-placeholder.png') center/cover no-repeat;
+  color: transparent;
   font-weight: 700;
   font-size: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: none;
+  border: 2px solid rgba(107, 114, 128, 0.3);
   cursor: pointer;
   transition: transform 150ms ease, box-shadow 150ms ease;
+  overflow: hidden;
 }
 
 .profile-avatar:hover {
@@ -654,9 +657,9 @@ body {
   min-width: 240px;
   background: white;
   border-radius: 12px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15), 0 4px 12px rgba(0, 0, 0, 0.1);
   border: 1px solid rgba(15, 23, 42, 0.08);
-  z-index: 100;
+  z-index: 9999;
   overflow: hidden;
 }
 
