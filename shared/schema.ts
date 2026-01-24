@@ -5,6 +5,7 @@ import { createInsertSchema } from "drizzle-zod";
 export const customers = pgTable("customers", {
   id: serial("id").primaryKey(),
   email: varchar("email", { length: 255 }).notNull().unique(),
+  fullName: varchar("full_name", { length: 255 }),
   phone: varchar("phone", { length: 20 }),
   passwordHash: text("password_hash"),
   chargebeeCustomerId: varchar("chargebee_customer_id", { length: 255 }),

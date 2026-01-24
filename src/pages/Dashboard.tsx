@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 interface Customer {
   id: number
   email: string
+  fullName?: string
   phone?: string
   isVerified: boolean
   lastLoginAt?: string
@@ -99,13 +100,17 @@ export default function Dashboard() {
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-12">
-        <h1 className="dashboard-title mb-2">Welcome back!</h1>
+        <h1 className="dashboard-title mb-2">Welcome back{customer?.fullName ? `, ${customer.fullName.split(' ')[0]}` : ''}!</h1>
         <p className="dashboard-subtitle mb-10">Manage your Nomad Internet account</p>
 
         <div className="grid md:grid-cols-2 gap-6">
           <div className="dashboard-card">
             <h2 className="card-title">Account Information</h2>
             <div className="space-y-5">
+              <div>
+                <p className="card-label">Name</p>
+                <p className="card-value">{customer?.fullName || 'Not set'}</p>
+              </div>
               <div>
                 <p className="card-label">Email</p>
                 <p className="card-value">{customer?.email}</p>

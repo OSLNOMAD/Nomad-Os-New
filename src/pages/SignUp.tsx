@@ -13,6 +13,7 @@ export default function SignUp() {
   const [phone, setPhone] = useState('')
   const [phoneOtp, setPhoneOtp] = useState('')
   const [emailOtp, setEmailOtp] = useState('')
+  const [fullName, setFullName] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -201,6 +202,11 @@ export default function SignUp() {
   }
 
   const completeSignUp = async () => {
+    if (!fullName.trim()) {
+      setError('Please enter your full name')
+      return
+    }
+    
     if (password.length < 8) {
       setError('Password must be at least 8 characters')
       return
@@ -220,7 +226,8 @@ export default function SignUp() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           customerId,
-          password
+          password,
+          fullName: fullName.trim()
         })
       })
       
@@ -404,6 +411,15 @@ export default function SignUp() {
 
         {step === 'password' && (
           <>
+            <Input
+              label="Full Name"
+              type="text"
+              placeholder="Enter your full name"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              required
+              tooltip="Your first and last name"
+            />
             <Input
               label="Password"
               type="password"

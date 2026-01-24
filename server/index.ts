@@ -187,10 +187,10 @@ app.post("/api/auth/verify-email-only", async (req, res) => {
 
 app.post("/api/auth/complete-signup", async (req, res) => {
   try {
-    const { customerId, password } = req.body;
+    const { customerId, password, fullName } = req.body;
 
-    if (!customerId || !password) {
-      return res.status(400).json({ error: "CustomerId and password are required" });
+    if (!customerId || !password || !fullName) {
+      return res.status(400).json({ error: "CustomerId, password, and full name are required" });
     }
 
     const existingCustomer = await storage.getCustomer(customerId);
@@ -205,6 +205,7 @@ app.post("/api/auth/complete-signup", async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 10);
     const customer = await storage.updateCustomer(customerId, { 
       passwordHash,
+      fullName,
       isVerified: true 
     });
     
@@ -229,6 +230,7 @@ app.post("/api/auth/complete-signup", async (req, res) => {
       customer: {
         id: customer?.id,
         email: customer?.email,
+        fullName: customer?.fullName,
         phone: customer?.phone,
         isVerified: customer?.isVerified,
         lastLoginAt: customer?.lastLoginAt,
@@ -285,6 +287,7 @@ app.post("/api/auth/signin", async (req, res) => {
       customer: {
         id: customer.id,
         email: customer.email,
+        fullName: customer.fullName,
         phone: customer.phone,
         isVerified: customer.isVerified,
         lastLoginAt: customer.lastLoginAt,
@@ -382,6 +385,7 @@ app.post("/api/auth/verify-signin-otp", async (req, res) => {
       customer: {
         id: customer.id,
         email: customer.email,
+        fullName: customer.fullName,
         phone: customer.phone,
         isVerified: customer.isVerified,
         lastLoginAt: customer.lastLoginAt,
@@ -418,6 +422,7 @@ app.get("/api/auth/me", async (req, res) => {
       customer: {
         id: customer.id,
         email: customer.email,
+        fullName: customer.fullName,
         phone: customer.phone,
         isVerified: customer.isVerified,
         lastLoginAt: customer.lastLoginAt,
