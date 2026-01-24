@@ -34,12 +34,12 @@ export default function SignIn() {
         transition={{ duration: 0.5 }}
         className="w-full max-w-md"
       >
-        <div className="text-center mb-8">
+        <div className="text-center mb-10">
           <motion.h1 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.2 }}
-            className="text-3xl font-semibold text-gray-800 mb-2"
+            className="text-3xl font-semibold text-gray-800 mb-3"
           >
             Welcome Back
           </motion.h1>
@@ -47,7 +47,7 @@ export default function SignIn() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.3 }}
-            className="text-gray-500"
+            className="text-gray-500 text-base"
           >
             Sign in to access your Nomad Internet account
           </motion.p>
@@ -58,7 +58,7 @@ export default function SignIn() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.4 }}
-          className="space-y-5"
+          className="space-y-6"
         >
           <Input
             label="Email Address"
@@ -84,14 +84,14 @@ export default function SignIn() {
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm"
+              className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm"
             >
               {error}
             </motion.div>
           )}
 
-          <div className="flex items-center justify-between text-sm">
-            <label className="flex items-center gap-2 cursor-pointer group">
+          <div className="flex items-center justify-between text-sm pt-1">
+            <label className="flex items-center gap-3 cursor-pointer group">
               <input 
                 type="checkbox" 
                 className="w-4 h-4 rounded border-gray-300 text-nomad-primary focus:ring-nomad-primary cursor-pointer"
@@ -108,11 +108,13 @@ export default function SignIn() {
             </a>
           </div>
 
-          <Button type="submit" isLoading={isLoading}>
-            Sign In
-          </Button>
+          <div className="pt-2">
+            <Button type="submit" isLoading={isLoading}>
+              Sign In
+            </Button>
+          </div>
 
-          <p className="text-center text-gray-500 text-sm">
+          <p className="text-center text-gray-500 text-sm pt-4">
             Don't have an account?{' '}
             <Link 
               to="/signup" 

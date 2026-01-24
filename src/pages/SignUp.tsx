@@ -223,8 +223,8 @@ export default function SignUp() {
         transition={{ duration: 0.5 }}
         className="w-full max-w-md"
       >
-        <div className="mb-6">
-          <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+        <div className="mb-8">
+          <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
             <motion.div 
               className="h-full bg-gradient-to-r from-nomad-primary to-nomad-accent rounded-full"
               initial={{ width: 0 }}
@@ -242,16 +242,16 @@ export default function SignUp() {
             exit={{ opacity: 0, x: -20 }}
             transition={{ duration: 0.3 }}
           >
-            <div className="text-center mb-8">
-              <h1 className="text-3xl font-semibold text-gray-800 mb-2">
+            <div className="text-center mb-10">
+              <h1 className="text-3xl font-semibold text-gray-800 mb-3">
                 {stepConfig[step].title}
               </h1>
-              <p className="text-gray-500">
+              <p className="text-gray-500 text-base leading-relaxed">
                 {stepConfig[step].subtitle}
               </p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit} className="space-y-6">
               {step === 'email' && (
                 <Input
                   label="Email Address"
@@ -265,18 +265,18 @@ export default function SignUp() {
               )}
 
               {step === 'confirm-email' && (
-                <div className="space-y-4">
-                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                    <p className="text-amber-800 text-sm">
+                <div className="space-y-6">
+                  <div className="p-5 bg-amber-50 border border-amber-200 rounded-xl">
+                    <p className="text-amber-800 text-sm leading-relaxed">
                       The email <strong>{email}</strong> was not found in our system. 
                       If this is correct, we'll proceed with phone verification.
                     </p>
                   </div>
-                  <div className="flex gap-3">
+                  <div className="flex gap-4">
                     <button
                       type="button"
                       onClick={() => setStep('email')}
-                      className="flex-1 py-3 px-4 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+                      className="flex-1 py-3.5 px-4 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
                     >
                       Use Different Email
                     </button>
@@ -300,7 +300,7 @@ export default function SignUp() {
               )}
 
               {step === 'verify-phone' && (
-                <div className="space-y-4">
+                <div className="space-y-5">
                   <Input
                     label="Verification Code"
                     type="text"
@@ -311,7 +311,7 @@ export default function SignUp() {
                     tooltip="Check your phone for the SMS code"
                     maxLength={6}
                   />
-                  <p className="text-sm text-gray-500 text-center">
+                  <p className="text-sm text-gray-500 text-center pt-2">
                     Didn't receive the code?{' '}
                     <button 
                       type="button"
@@ -325,7 +325,7 @@ export default function SignUp() {
               )}
 
               {step === 'verify-email' && (
-                <div className="space-y-4">
+                <div className="space-y-5">
                   <Input
                     label="Email Verification Code"
                     type="text"
@@ -336,7 +336,7 @@ export default function SignUp() {
                     tooltip="Check your email for the verification code"
                     maxLength={6}
                   />
-                  <p className="text-sm text-gray-500 text-center">
+                  <p className="text-sm text-gray-500 text-center pt-2">
                     Didn't receive the code?{' '}
                     <button 
                       type="button"
@@ -353,23 +353,25 @@ export default function SignUp() {
                 <motion.div
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm"
+                  className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm"
                 >
                   {error}
                 </motion.div>
               )}
 
               {step !== 'confirm-email' && (
-                <Button type="submit" isLoading={isLoading}>
-                  {step === 'email' && 'Continue'}
-                  {step === 'phone' && 'Send Verification Code'}
-                  {step === 'verify-phone' && 'Verify Phone'}
-                  {step === 'verify-email' && 'Complete Sign Up'}
-                </Button>
+                <div className="pt-2">
+                  <Button type="submit" isLoading={isLoading}>
+                    {step === 'email' && 'Continue'}
+                    {step === 'phone' && 'Send Verification Code'}
+                    {step === 'verify-phone' && 'Verify Phone'}
+                    {step === 'verify-email' && 'Complete Sign Up'}
+                  </Button>
+                </div>
               )}
 
               {step === 'email' && (
-                <p className="text-center text-gray-500 text-sm">
+                <p className="text-center text-gray-500 text-sm pt-4">
                   Already have an account?{' '}
                   <Link 
                     to="/signin" 

@@ -13,60 +13,56 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
           <div className="absolute bottom-40 right-20 w-96 h-96 rounded-full bg-white blur-3xl" />
         </div>
         
-        <div className="relative z-10 flex flex-col justify-center items-center w-full p-12">
+        <div className="relative z-10 flex flex-col justify-center items-center w-full px-16 py-12">
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.6 }}
-            className="text-center text-white"
+            className="text-center text-white max-w-lg"
           >
-            <div className="mb-8">
-              <div className="w-20 h-20 mx-auto mb-6 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
-                <svg className="w-12 h-12" viewBox="0 0 24 24" fill="none">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" fill="white" fillOpacity="0.2"/>
-                  <path d="M12 6c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6z" fill="white" fillOpacity="0.4"/>
-                  <path d="M12 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" fill="white"/>
-                  <path d="M4 12h2M18 12h2M12 4v2M12 18v2" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-                </svg>
-              </div>
+            <div className="mb-10">
+              <h1 className="text-5xl font-bold tracking-tight mb-2">
+                Nomad Internet
+              </h1>
+              <div className="w-20 h-1 bg-white/40 mx-auto rounded-full" />
             </div>
             
-            <h2 className="text-4xl font-bold mb-4">
+            <h2 className="text-3xl font-semibold mb-6">
               Stay Connected Anywhere
             </h2>
-            <p className="text-white/80 text-lg max-w-md">
+            <p className="text-white/80 text-lg leading-relaxed">
               Reliable internet service for the modern nomad. Access your account to manage your service, view usage, and more.
             </p>
             
-            <div className="mt-12 grid grid-cols-3 gap-8 text-center">
-              <div>
-                <div className="text-3xl font-bold">24/7</div>
-                <div className="text-white/70 text-sm">Support</div>
+            <div className="mt-16 grid grid-cols-3 gap-12 text-center">
+              <div className="space-y-2">
+                <div className="text-4xl font-bold">24/7</div>
+                <div className="text-white/70 text-sm uppercase tracking-wider">Support</div>
               </div>
-              <div>
-                <div className="text-3xl font-bold">99.9%</div>
-                <div className="text-white/70 text-sm">Uptime</div>
+              <div className="space-y-2">
+                <div className="text-4xl font-bold">99.9%</div>
+                <div className="text-white/70 text-sm uppercase tracking-wider">Uptime</div>
               </div>
-              <div>
-                <div className="text-3xl font-bold">50+</div>
-                <div className="text-white/70 text-sm">States</div>
+              <div className="space-y-2">
+                <div className="text-4xl font-bold">50+</div>
+                <div className="text-white/70 text-sm uppercase tracking-wider">States</div>
               </div>
             </div>
           </motion.div>
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col justify-center items-center p-8">
+      <div className="flex-1 flex flex-col justify-center items-center px-8 py-12 lg:px-16">
         <motion.div 
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.5 }}
-          className="w-full max-w-md mb-8"
+          className="w-full max-w-md mb-10"
         >
           <img 
             src="/logo.svg" 
             alt="Nomad Internet" 
-            className="h-12 mx-auto lg:mx-0"
+            className="h-12 mx-auto"
           />
         </motion.div>
         
@@ -76,7 +72,7 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.6 }}
-          className="mt-8 text-center text-gray-400 text-sm"
+          className="mt-12 text-center text-gray-400 text-sm"
         >
           &copy; {new Date().getFullYear()} Nomad Internet. All rights reserved.
         </motion.p>
