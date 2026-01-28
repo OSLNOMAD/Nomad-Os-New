@@ -77,6 +77,24 @@ interface ChargebeeTransaction {
   errorText: string | null
 }
 
+interface ChargebeeCustomer {
+  id: string
+  email: string
+  firstName: string
+  lastName: string
+  phone: string
+  createdAt: string
+  paymentMethod?: {
+    type: string
+    status: string
+    gateway: string
+  }
+  subscriptions: ChargebeeSubscription[]
+  invoices: ChargebeeInvoice[]
+  transactions: ChargebeeTransaction[]
+  paymentSources: any[]
+}
+
 interface CombinedOrder {
   source: string
   orderNumber: string
@@ -129,11 +147,10 @@ interface ThingspaceDevice {
 
 interface FullData {
   chargebee: {
-    customer: any
-    subscriptions: ChargebeeSubscription[]
-    invoices: ChargebeeInvoice[]
-    transactions: ChargebeeTransaction[]
-    paymentSources: any[]
+    customers: ChargebeeCustomer[]
+    totalSubscriptions: number
+    totalInvoices: number
+    totalDue: number
   }
   orders: CombinedOrder[]
   devices: ThingspaceDevice[]
@@ -267,6 +284,10 @@ export default function Dashboard() {
     return 'bg-gray-100 text-gray-800'
   }
 
+  const allSubscriptions = fullData?.chargebee.customers.flatMap(c => c.subscriptions) || []
+  const allInvoices = fullData?.chargebee.customers.flatMap(c => c.invoices) || []
+  const allTransactions = fullData?.chargebee.customers.flatMap(c => c.transactions) || []
+
   if (isLoading) {
     return (
       <div className="dashboard-layout flex items-center justify-center">
@@ -379,7 +400,7 @@ export default function Dashboard() {
                   <div className="bg-white rounded-lg border border-gray-200 p-6">
                     <p className="text-sm text-muted mb-1">Active Subscriptions</p>
                     <p className="text-3xl font-bold text-text">
-                      {fullData?.chargebee.subscriptions.filter(s => s.status === 'active').length || 0}
+                      {allSubscriptions.filter(s => s.status === 'active').length}
                     </p>
                   </div>
                   <div className="bg-white rounded-lg border border-gray-200 p-6">
@@ -393,16 +414,12 @@ export default function Dashboard() {
                   <div className="bg-white rounded-lg border border-gray-200 p-6">
                     <p className="text-sm text-muted mb-1">Outstanding Balance</p>
                     <p className="text-3xl font-bold text-text">
-                      {formatCurrency(
-                        fullData?.chargebee.invoices
-                          .filter(i => i.status === 'payment_due')
-                          .reduce((sum, i) => sum + i.amountDue, 0) || 0
-                      )}
+                      {formatCurrency(fullData?.chargebee.totalDue || 0)}
                     </p>
                   </div>
                 </div>
 
-                {fullData?.chargebee.subscriptions.some(s => s.dueInvoicesCount > 0) && (
+                {allSubscriptions.some(s => s.dueInvoicesCount > 0) && (
                   <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                     <div className="flex items-center gap-2">
                       <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -440,7 +457,7 @@ export default function Dashboard() {
 
                   <div className="bg-white rounded-lg border border-gray-200 p-6">
                     <h3 className="text-lg font-semibold text-text mb-4">Recent Transactions</h3>
-                    {fullData?.chargebee.transactions.slice(0, 5).map((txn) => (
+                    {allTransactions.slice(0, 5).map((txn) => (
                       <div key={txn.id} className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">
                         <div>
                           <p className="font-medium text-text">{formatCurrency(txn.amount)}</p>
@@ -456,7 +473,7 @@ export default function Dashboard() {
                         </div>
                       </div>
                     ))}
-                    {(!fullData?.chargebee.transactions.length) && (
+                    {allTransactions.length === 0 && (
                       <p className="text-muted text-sm">No transactions found</p>
                     )}
                   </div>
@@ -465,77 +482,117 @@ export default function Dashboard() {
             )}
 
             {activeTab === 'subscriptions' && (
-              <div className="space-y-4">
-                <h2 className="text-xl font-semibold text-text">Your Subscriptions</h2>
-                {fullData?.chargebee.subscriptions.map((sub) => (
-                  <div key={sub.id} className="bg-white rounded-lg border border-gray-200 p-6">
-                    <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <h3 className="text-lg font-semibold text-text">{sub.planId}</h3>
-                          <span className={`px-2 py-0.5 text-xs rounded-full ${getStatusColor(sub.status)}`}>
-                            {sub.status}
-                          </span>
-                        </div>
-                        <p className="text-2xl font-bold text-primary mb-4">
-                          {formatCurrency(sub.planAmount)}/{sub.billingPeriodUnit}
-                        </p>
-                        
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-semibold text-text">Your Subscriptions</h2>
+                  {(fullData?.chargebee.customers.length || 0) > 1 && (
+                    <span className="text-sm text-muted">
+                      {fullData?.chargebee.customers.length} customer accounts
+                    </span>
+                  )}
+                </div>
+                
+                {fullData?.chargebee.customers.map((cbCustomer) => (
+                  <div key={cbCustomer.id} className="space-y-4">
+                    {(fullData?.chargebee.customers.length || 0) > 1 && (
+                      <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                        <div className="flex items-center justify-between">
                           <div>
-                            <p className="text-muted">Next Billing</p>
-                            <p className="font-medium">{formatDate(sub.nextBillingAt)}</p>
-                          </div>
-                          <div>
-                            <p className="text-muted">Current Period Ends</p>
-                            <p className="font-medium">{formatDate(sub.currentTermEnd)}</p>
-                          </div>
-                          <div>
-                            <p className="text-muted">Due Invoices</p>
-                            <p className={`font-medium ${sub.dueInvoicesCount > 0 ? 'text-red-600' : ''}`}>
-                              {sub.dueInvoicesCount}
+                            <p className="font-semibold text-text">
+                              {cbCustomer.firstName} {cbCustomer.lastName}
                             </p>
+                            <p className="text-sm text-muted">Customer ID: {cbCustomer.id}</p>
                           </div>
-                          <div>
-                            <p className="text-muted">Amount Due</p>
-                            <p className={`font-medium ${sub.totalDues > 0 ? 'text-red-600' : ''}`}>
-                              {formatCurrency(sub.totalDues)}
-                            </p>
+                          <div className="text-right text-sm">
+                            <p className="text-muted">Created: {formatDate(cbCustomer.createdAt)}</p>
+                            {cbCustomer.paymentMethod && (
+                              <p className="text-muted">
+                                {cbCustomer.paymentMethod.type} ({cbCustomer.paymentMethod.status})
+                              </p>
+                            )}
                           </div>
                         </div>
-
-                        {(sub.iccid || sub.imei) && (
-                          <div className="mt-4 pt-4 border-t border-gray-100">
-                            <p className="text-sm text-muted mb-2">Device Information</p>
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-                              {sub.iccid && (
-                                <div>
-                                  <p className="text-muted">ICCID</p>
-                                  <p className="font-mono text-xs">{sub.iccid}</p>
-                                </div>
-                              )}
-                              {sub.imei && (
-                                <div>
-                                  <p className="text-muted">IMEI</p>
-                                  <p className="font-mono text-xs">{sub.imei}</p>
-                                </div>
-                              )}
-                              {sub.mdn && (
-                                <div>
-                                  <p className="text-muted">MDN</p>
-                                  <p className="font-mono text-xs">{sub.mdn}</p>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                        
-                        <RawDataPanel data={sub} title="Subscription" />
                       </div>
-                    </div>
+                    )}
+                    
+                    {cbCustomer.subscriptions.map((sub) => (
+                      <div key={sub.id} className="bg-white rounded-lg border border-gray-200 p-6">
+                        <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <h3 className="text-lg font-semibold text-text">{sub.planId}</h3>
+                              <span className={`px-2 py-0.5 text-xs rounded-full ${getStatusColor(sub.status)}`}>
+                                {sub.status}
+                              </span>
+                            </div>
+                            <p className="text-2xl font-bold text-primary mb-4">
+                              {formatCurrency(sub.planAmount)}/{sub.billingPeriodUnit}
+                            </p>
+                            
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                              <div>
+                                <p className="text-muted">Next Billing</p>
+                                <p className="font-medium">{formatDate(sub.nextBillingAt)}</p>
+                              </div>
+                              <div>
+                                <p className="text-muted">Current Period Ends</p>
+                                <p className="font-medium">{formatDate(sub.currentTermEnd)}</p>
+                              </div>
+                              <div>
+                                <p className="text-muted">Due Invoices</p>
+                                <p className={`font-medium ${sub.dueInvoicesCount > 0 ? 'text-red-600' : ''}`}>
+                                  {sub.dueInvoicesCount}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-muted">Amount Due</p>
+                                <p className={`font-medium ${sub.totalDues > 0 ? 'text-red-600' : ''}`}>
+                                  {formatCurrency(sub.totalDues)}
+                                </p>
+                              </div>
+                            </div>
+
+                            {(sub.iccid || sub.imei) && (
+                              <div className="mt-4 pt-4 border-t border-gray-100">
+                                <p className="text-sm text-muted mb-2">Device Information</p>
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                                  {sub.iccid && (
+                                    <div>
+                                      <p className="text-muted">ICCID</p>
+                                      <p className="font-mono text-xs">{sub.iccid}</p>
+                                    </div>
+                                  )}
+                                  {sub.imei && (
+                                    <div>
+                                      <p className="text-muted">IMEI</p>
+                                      <p className="font-mono text-xs">{sub.imei}</p>
+                                    </div>
+                                  )}
+                                  {sub.mdn && (
+                                    <div>
+                                      <p className="text-muted">MDN</p>
+                                      <p className="font-mono text-xs">{sub.mdn}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                            
+                            <RawDataPanel data={sub} title="Subscription" />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    
+                    {cbCustomer.subscriptions.length === 0 && (
+                      <div className="bg-white rounded-lg border border-gray-200 p-4 text-center">
+                        <p className="text-sm text-muted">No subscriptions for this customer account</p>
+                      </div>
+                    )}
                   </div>
                 ))}
-                {(!fullData?.chargebee.subscriptions.length) && (
+                
+                {(fullData?.chargebee.customers.length === 0) && (
                   <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
                     <p className="text-muted">No subscriptions found</p>
                   </div>
@@ -674,7 +731,7 @@ export default function Dashboard() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {fullData?.chargebee.invoices.map((inv) => (
+                      {allInvoices.map((inv) => (
                         <tr key={inv.id} className="hover:bg-gray-50">
                           <td className="px-6 py-4 text-sm font-medium text-text">{inv.id}</td>
                           <td className="px-6 py-4 text-sm text-muted">{formatDate(inv.date)}</td>
@@ -699,7 +756,7 @@ export default function Dashboard() {
                   </table>
                 </div>
                 
-                <RawDataPanel data={fullData?.chargebee.invoices} title="Invoices" />
+                <RawDataPanel data={allInvoices} title="Invoices" />
 
                 <h3 className="text-lg font-semibold text-text mt-8">Transaction History</h3>
                 <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
@@ -715,7 +772,7 @@ export default function Dashboard() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {fullData?.chargebee.transactions.map((txn) => (
+                      {allTransactions.map((txn) => (
                         <tr key={txn.id} className="hover:bg-gray-50">
                           <td className="px-6 py-4 text-sm font-mono text-xs text-text">{txn.id}</td>
                           <td className="px-6 py-4 text-sm text-muted">{formatDate(txn.date)}</td>
@@ -735,7 +792,7 @@ export default function Dashboard() {
                   </table>
                 </div>
                 
-                <RawDataPanel data={fullData?.chargebee.transactions} title="Transactions" />
+                <RawDataPanel data={allTransactions} title="Transactions" />
               </div>
             )}
 

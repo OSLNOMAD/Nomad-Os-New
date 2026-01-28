@@ -151,3 +151,10 @@ npm run db:push  # Push database schema
   - Subscriptions display ICCID/IMEI/MDN from Chargebee custom fields
   - ThingSpace integration for device status lookup by ICCID
   - Expandable "Raw Data" panels on all sections to show complete JSON payloads
+- Jan 28, 2026: Chargebee Multi-Customer Hierarchy Support
+  - Restructured ChargebeeData to support: one email → multiple customers → multiple subscriptions per customer
+  - Dashboard Subscriptions tab shows hierarchical view with customer account headers (when multiple exist)
+  - Added totalSubscriptions, totalInvoices, totalDue aggregation across all customers
+  - Helper arrays (allSubscriptions, allInvoices, allTransactions) for flattened data access
+  - IMEI/ICCID display in Orders section from Shipstation advancedOptions.customField1/2
+  - Optimized API calls: Shopify orders by email parameter, Shipstation orders by order numbers

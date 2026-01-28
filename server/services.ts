@@ -137,14 +137,18 @@ export interface ChargebeeTransaction {
   }>;
 }
 
-export interface ChargebeeData {
-  customer: ChargebeeCustomer | null;
+export interface ChargebeeCustomerWithData extends ChargebeeCustomer {
   subscriptions: ChargebeeSubscription[];
   invoices: ChargebeeInvoice[];
   transactions: ChargebeeTransaction[];
-  creditNotes: any[];
-  promotionalCredits: any[];
   paymentSources: any[];
+}
+
+export interface ChargebeeData {
+  customers: ChargebeeCustomerWithData[];
+  totalSubscriptions: number;
+  totalInvoices: number;
+  totalDue: number;
 }
 
 export interface ShopifyOrder {
@@ -448,179 +452,191 @@ export async function checkChargebeeCustomer(email: string): Promise<{ found: bo
   }
 }
 
+function parseChargebeeCustomer(c: any): ChargebeeCustomer {
+  return {
+    id: c.id,
+    email: c.email,
+    firstName: c.first_name || '',
+    lastName: c.last_name || '',
+    phone: c.phone || '',
+    createdAt: c.created_at ? new Date(c.created_at * 1000).toISOString() : '',
+    autoCollection: c.auto_collection,
+    promotionalCredits: (c.promotional_credits || 0) / 100,
+    refundableCredits: (c.refundable_credits || 0) / 100,
+    excessPayments: (c.excess_payments || 0) / 100,
+    unbilledCharges: (c.unbilled_charges || 0) / 100,
+    billingAddress: c.billing_address ? {
+      firstName: c.billing_address.first_name || '',
+      lastName: c.billing_address.last_name || '',
+      line1: c.billing_address.line1 || '',
+      line2: c.billing_address.line2 || '',
+      city: c.billing_address.city || '',
+      state: c.billing_address.state || '',
+      zip: c.billing_address.zip || '',
+      country: c.billing_address.country || '',
+      phone: c.billing_address.phone || ''
+    } : undefined,
+    paymentMethod: c.payment_method ? {
+      type: c.payment_method.type,
+      status: c.payment_method.status,
+      gateway: c.payment_method.gateway
+    } : undefined,
+    customFields: Object.fromEntries(
+      Object.entries(c).filter(([k]) => k.startsWith('cf_')).map(([k, v]) => [k, String(v)])
+    )
+  };
+}
+
+function parseChargebeeSubscription(s: any): ChargebeeSubscription {
+  return {
+    id: s.id,
+    planId: s.subscription_items?.[0]?.item_price_id || s.plan_id || 'Unknown',
+    status: s.status,
+    planAmount: (s.subscription_items?.[0]?.amount || s.plan_amount || 0) / 100,
+    billingPeriod: s.billing_period,
+    billingPeriodUnit: s.billing_period_unit,
+    createdAt: s.created_at ? new Date(s.created_at * 1000).toISOString() : '',
+    startedAt: s.started_at ? new Date(s.started_at * 1000).toISOString() : '',
+    activatedAt: s.activated_at ? new Date(s.activated_at * 1000).toISOString() : '',
+    currentTermStart: s.current_term_start ? new Date(s.current_term_start * 1000).toISOString() : '',
+    currentTermEnd: s.current_term_end ? new Date(s.current_term_end * 1000).toISOString() : '',
+    nextBillingAt: s.next_billing_at ? new Date(s.next_billing_at * 1000).toISOString() : '',
+    cancelledAt: s.cancelled_at ? new Date(s.cancelled_at * 1000).toISOString() : null,
+    cancelReason: s.cancel_reason || null,
+    dueInvoicesCount: s.due_invoices_count || 0,
+    dueSince: s.due_since ? new Date(s.due_since * 1000).toISOString() : null,
+    totalDues: (s.total_dues || 0) / 100,
+    mrr: (s.mrr || 0) / 100,
+    iccid: s.cf_SIM_ID_ICCID || null,
+    imei: s.cf_Device_IMEI || null,
+    mdn: s.cf_mdn || null,
+    subscriptionItems: (s.subscription_items || []).map((si: any) => ({
+      itemPriceId: si.item_price_id,
+      itemType: si.item_type,
+      quantity: si.quantity || 1,
+      amount: (si.amount || 0) / 100,
+      unitPrice: (si.unit_price || 0) / 100
+    })),
+    shippingAddress: s.shipping_address ? {
+      line1: s.shipping_address.line1 || '',
+      city: s.shipping_address.city || '',
+      state: s.shipping_address.state || '',
+      zip: s.shipping_address.zip || '',
+      country: s.shipping_address.country || ''
+    } : undefined
+  };
+}
+
+function parseChargebeeInvoice(inv: any): ChargebeeInvoice {
+  return {
+    id: inv.id,
+    status: inv.status,
+    date: inv.date ? new Date(inv.date * 1000).toISOString() : '',
+    dueDate: inv.due_date ? new Date(inv.due_date * 1000).toISOString() : null,
+    paidAt: inv.paid_at ? new Date(inv.paid_at * 1000).toISOString() : null,
+    subTotal: (inv.sub_total || 0) / 100,
+    tax: (inv.tax || 0) / 100,
+    total: (inv.total || 0) / 100,
+    amountPaid: (inv.amount_paid || 0) / 100,
+    amountAdjusted: (inv.amount_adjusted || 0) / 100,
+    creditsApplied: (inv.credits_applied || 0) / 100,
+    amountDue: (inv.amount_due || 0) / 100,
+    writeOffAmount: (inv.write_off_amount || 0) / 100,
+    dunningStatus: inv.dunning_status || null,
+    firstInvoice: inv.first_invoice || false,
+    recurring: inv.recurring || false,
+    currencyCode: inv.currency_code || 'USD',
+    lineItems: (inv.line_items || []).map((li: any) => ({
+      description: li.description || '',
+      amount: (li.amount || 0) / 100,
+      quantity: li.quantity || 1,
+      entityType: li.entity_type || '',
+      entityId: li.entity_id || ''
+    })),
+    linkedPayments: (inv.linked_payments || []).map((lp: any) => ({
+      txnId: lp.txn_id,
+      txnAmount: (lp.txn_amount || 0) / 100,
+      txnDate: lp.txn_date ? new Date(lp.txn_date * 1000).toISOString() : '',
+      txnStatus: lp.txn_status
+    })),
+    dunningAttempts: (inv.dunning_attempts || []).map((da: any) => ({
+      attempt: da.attempt,
+      createdAt: da.created_at ? new Date(da.created_at * 1000).toISOString() : '',
+      transactionId: da.transaction_id || null
+    }))
+  };
+}
+
+function parseChargebeeTransaction(txn: any): ChargebeeTransaction {
+  return {
+    id: txn.id,
+    type: txn.type,
+    status: txn.status,
+    date: txn.date ? new Date(txn.date * 1000).toISOString() : '',
+    amount: (txn.amount || 0) / 100,
+    currencyCode: txn.currency_code || 'USD',
+    gateway: txn.gateway || '',
+    paymentMethod: txn.payment_method || '',
+    referenceNumber: txn.reference_number || null,
+    idAtGateway: txn.id_at_gateway || null,
+    errorCode: txn.error_code || null,
+    errorText: txn.error_text || null,
+    amountUnused: (txn.amount_unused || 0) / 100,
+    linkedInvoices: (txn.linked_invoices || []).map((li: any) => ({
+      invoiceId: li.invoice_id,
+      appliedAmount: (li.applied_amount || 0) / 100,
+      appliedAt: li.applied_at ? new Date(li.applied_at * 1000).toISOString() : ''
+    }))
+  };
+}
+
 export async function fetchChargebeeData(email: string): Promise<ChargebeeData> {
   const result: ChargebeeData = {
-    customer: null,
-    subscriptions: [],
-    invoices: [],
-    transactions: [],
-    creditNotes: [],
-    promotionalCredits: [],
-    paymentSources: []
+    customers: [],
+    totalSubscriptions: 0,
+    totalInvoices: 0,
+    totalDue: 0
   };
   
   try {
-    const customerData = await chargebeeApiGet(`/customers?email[is]=${encodeURIComponent(email)}`);
+    const customerData = await chargebeeApiGet(`/customers?email[is]=${encodeURIComponent(email)}&limit=100`);
     if (!customerData?.list?.length) return result;
     
-    const c = customerData.list[0].customer;
-    result.customer = {
-      id: c.id,
-      email: c.email,
-      firstName: c.first_name || '',
-      lastName: c.last_name || '',
-      phone: c.phone || '',
-      createdAt: c.created_at ? new Date(c.created_at * 1000).toISOString() : '',
-      autoCollection: c.auto_collection,
-      promotionalCredits: (c.promotional_credits || 0) / 100,
-      refundableCredits: (c.refundable_credits || 0) / 100,
-      excessPayments: (c.excess_payments || 0) / 100,
-      unbilledCharges: (c.unbilled_charges || 0) / 100,
-      billingAddress: c.billing_address ? {
-        firstName: c.billing_address.first_name || '',
-        lastName: c.billing_address.last_name || '',
-        line1: c.billing_address.line1 || '',
-        line2: c.billing_address.line2 || '',
-        city: c.billing_address.city || '',
-        state: c.billing_address.state || '',
-        zip: c.billing_address.zip || '',
-        country: c.billing_address.country || '',
-        phone: c.billing_address.phone || ''
-      } : undefined,
-      paymentMethod: c.payment_method ? {
-        type: c.payment_method.type,
-        status: c.payment_method.status,
-        gateway: c.payment_method.gateway
-      } : undefined,
-      customFields: Object.fromEntries(
-        Object.entries(c).filter(([k]) => k.startsWith('cf_')).map(([k, v]) => [k, String(v)])
-      )
-    };
+    const customersWithData: ChargebeeCustomerWithData[] = [];
     
-    const [subsData, invoicesData, txnData, creditNotesData, promoCreditsData, paymentSourcesData] = await Promise.all([
-      chargebeeApiGet(`/subscriptions?customer_id[is]=${c.id}&limit=50`),
-      chargebeeApiGet(`/invoices?customer_id[is]=${c.id}&limit=50&sort_by[desc]=date`),
-      chargebeeApiGet(`/transactions?customer_id[is]=${c.id}&limit=50&sort_by[desc]=date`),
-      chargebeeApiGet(`/credit_notes?customer_id[is]=${c.id}&limit=20`),
-      chargebeeApiGet(`/promotional_credits?customer_id[is]=${c.id}&limit=20`),
-      chargebeeApiGet(`/payment_sources?customer_id[is]=${c.id}`)
-    ]);
-    
-    if (subsData?.list) {
-      result.subscriptions = subsData.list.map((item: any) => {
-        const s = item.subscription;
-        return {
-          id: s.id,
-          planId: s.subscription_items?.[0]?.item_price_id || s.plan_id || 'Unknown',
-          status: s.status,
-          planAmount: (s.subscription_items?.[0]?.amount || s.plan_amount || 0) / 100,
-          billingPeriod: s.billing_period,
-          billingPeriodUnit: s.billing_period_unit,
-          createdAt: s.created_at ? new Date(s.created_at * 1000).toISOString() : '',
-          startedAt: s.started_at ? new Date(s.started_at * 1000).toISOString() : '',
-          activatedAt: s.activated_at ? new Date(s.activated_at * 1000).toISOString() : '',
-          currentTermStart: s.current_term_start ? new Date(s.current_term_start * 1000).toISOString() : '',
-          currentTermEnd: s.current_term_end ? new Date(s.current_term_end * 1000).toISOString() : '',
-          nextBillingAt: s.next_billing_at ? new Date(s.next_billing_at * 1000).toISOString() : '',
-          cancelledAt: s.cancelled_at ? new Date(s.cancelled_at * 1000).toISOString() : null,
-          cancelReason: s.cancel_reason || null,
-          dueInvoicesCount: s.due_invoices_count || 0,
-          dueSince: s.due_since ? new Date(s.due_since * 1000).toISOString() : null,
-          totalDues: (s.total_dues || 0) / 100,
-          mrr: (s.mrr || 0) / 100,
-          iccid: s.cf_SIM_ID_ICCID || null,
-          imei: s.cf_Device_IMEI || null,
-          mdn: s.cf_mdn || null,
-          subscriptionItems: (s.subscription_items || []).map((si: any) => ({
-            itemPriceId: si.item_price_id,
-            itemType: si.item_type,
-            quantity: si.quantity || 1,
-            amount: (si.amount || 0) / 100,
-            unitPrice: (si.unit_price || 0) / 100
-          })),
-          shippingAddress: s.shipping_address ? {
-            line1: s.shipping_address.line1 || '',
-            city: s.shipping_address.city || '',
-            state: s.shipping_address.state || '',
-            zip: s.shipping_address.zip || '',
-            country: s.shipping_address.country || ''
-          } : undefined
-        };
-      });
+    for (const item of customerData.list) {
+      const c = item.customer;
+      const customer = parseChargebeeCustomer(c);
+      
+      const [subsData, invoicesData, txnData, paymentSourcesData] = await Promise.all([
+        chargebeeApiGet(`/subscriptions?customer_id[is]=${c.id}&limit=50`),
+        chargebeeApiGet(`/invoices?customer_id[is]=${c.id}&limit=50&sort_by[desc]=date`),
+        chargebeeApiGet(`/transactions?customer_id[is]=${c.id}&limit=50&sort_by[desc]=date`),
+        chargebeeApiGet(`/payment_sources?customer_id[is]=${c.id}`)
+      ]);
+      
+      const subscriptions = subsData?.list?.map((i: any) => parseChargebeeSubscription(i.subscription)) || [];
+      const invoices = invoicesData?.list?.map((i: any) => parseChargebeeInvoice(i.invoice)) || [];
+      const transactions = txnData?.list?.map((i: any) => parseChargebeeTransaction(i.transaction)) || [];
+      const paymentSources = paymentSourcesData?.list || [];
+      
+      const customerWithData: ChargebeeCustomerWithData = {
+        ...customer,
+        subscriptions,
+        invoices,
+        transactions,
+        paymentSources
+      };
+      
+      customersWithData.push(customerWithData);
+      
+      result.totalSubscriptions += subscriptions.length;
+      result.totalInvoices += invoices.length;
+      result.totalDue += invoices.reduce((sum, inv) => sum + inv.amountDue, 0);
     }
     
-    if (invoicesData?.list) {
-      result.invoices = invoicesData.list.map((item: any) => {
-        const inv = item.invoice;
-        return {
-          id: inv.id,
-          status: inv.status,
-          date: inv.date ? new Date(inv.date * 1000).toISOString() : '',
-          dueDate: inv.due_date ? new Date(inv.due_date * 1000).toISOString() : null,
-          paidAt: inv.paid_at ? new Date(inv.paid_at * 1000).toISOString() : null,
-          subTotal: (inv.sub_total || 0) / 100,
-          tax: (inv.tax || 0) / 100,
-          total: (inv.total || 0) / 100,
-          amountPaid: (inv.amount_paid || 0) / 100,
-          amountAdjusted: (inv.amount_adjusted || 0) / 100,
-          creditsApplied: (inv.credits_applied || 0) / 100,
-          amountDue: (inv.amount_due || 0) / 100,
-          writeOffAmount: (inv.write_off_amount || 0) / 100,
-          dunningStatus: inv.dunning_status || null,
-          firstInvoice: inv.first_invoice || false,
-          recurring: inv.recurring || false,
-          currencyCode: inv.currency_code || 'USD',
-          lineItems: (inv.line_items || []).map((li: any) => ({
-            description: li.description || '',
-            amount: (li.amount || 0) / 100,
-            quantity: li.quantity || 1,
-            entityType: li.entity_type || '',
-            entityId: li.entity_id || ''
-          })),
-          linkedPayments: (inv.linked_payments || []).map((lp: any) => ({
-            txnId: lp.txn_id,
-            txnAmount: (lp.txn_amount || 0) / 100,
-            txnDate: lp.txn_date ? new Date(lp.txn_date * 1000).toISOString() : '',
-            txnStatus: lp.txn_status
-          })),
-          dunningAttempts: (inv.dunning_attempts || []).map((da: any) => ({
-            attempt: da.attempt,
-            createdAt: da.created_at ? new Date(da.created_at * 1000).toISOString() : '',
-            transactionId: da.transaction_id || null
-          }))
-        };
-      });
-    }
-    
-    if (txnData?.list) {
-      result.transactions = txnData.list.map((item: any) => {
-        const txn = item.transaction;
-        return {
-          id: txn.id,
-          type: txn.type,
-          status: txn.status,
-          date: txn.date ? new Date(txn.date * 1000).toISOString() : '',
-          amount: (txn.amount || 0) / 100,
-          currencyCode: txn.currency_code || 'USD',
-          gateway: txn.gateway || '',
-          paymentMethod: txn.payment_method || '',
-          referenceNumber: txn.reference_number || null,
-          idAtGateway: txn.id_at_gateway || null,
-          errorCode: txn.error_code || null,
-          errorText: txn.error_text || null,
-          amountUnused: (txn.amount_unused || 0) / 100,
-          linkedInvoices: (txn.linked_invoices || []).map((li: any) => ({
-            invoiceId: li.invoice_id,
-            appliedAmount: (li.applied_amount || 0) / 100,
-            appliedAt: li.applied_at ? new Date(li.applied_at * 1000).toISOString() : ''
-          }))
-        };
-      });
-    }
-    
-    result.creditNotes = creditNotesData?.list || [];
-    result.promotionalCredits = promoCreditsData?.list || [];
-    result.paymentSources = paymentSourcesData?.list || [];
+    customersWithData.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    result.customers = customersWithData;
     
   } catch (error) {
     console.error('Chargebee fetch error:', error);
@@ -1142,9 +1158,11 @@ export async function fetchCustomerFullData(email: string): Promise<CustomerFull
   const devices: ThingspaceDevice[] = [];
   const iccidsToCheck = new Set<string>();
   
-  for (const sub of chargebee.subscriptions) {
-    if (sub.iccid && sub.iccid !== 'pending' && sub.iccid !== 'redemption_pending') {
-      iccidsToCheck.add(sub.iccid);
+  for (const customer of chargebee.customers) {
+    for (const sub of customer.subscriptions) {
+      if (sub.iccid && sub.iccid !== 'pending' && sub.iccid !== 'redemption_pending') {
+        iccidsToCheck.add(sub.iccid);
+      }
     }
   }
   
