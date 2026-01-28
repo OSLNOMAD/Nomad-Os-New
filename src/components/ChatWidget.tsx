@@ -11,6 +11,40 @@ interface ChatWidgetProps {
   dataLoaded?: boolean;
 }
 
+function parseMarkdown(text: string): React.ReactNode {
+  const lines = text.split('\n');
+  const elements: React.ReactNode[] = [];
+  
+  lines.forEach((line, lineIdx) => {
+    if (lineIdx > 0) {
+      elements.push(<br key={`br-${lineIdx}`} />);
+    }
+    
+    const parts: React.ReactNode[] = [];
+    let remaining = line;
+    let partIdx = 0;
+    
+    while (remaining.length > 0) {
+      const boldMatch = remaining.match(/\*\*(.+?)\*\*/);
+      
+      if (boldMatch && boldMatch.index !== undefined) {
+        if (boldMatch.index > 0) {
+          parts.push(<span key={`text-${lineIdx}-${partIdx++}`}>{remaining.slice(0, boldMatch.index)}</span>);
+        }
+        parts.push(<strong key={`bold-${lineIdx}-${partIdx++}`} className="font-semibold">{boldMatch[1]}</strong>);
+        remaining = remaining.slice(boldMatch.index + boldMatch[0].length);
+      } else {
+        parts.push(<span key={`text-${lineIdx}-${partIdx++}`}>{remaining}</span>);
+        remaining = '';
+      }
+    }
+    
+    elements.push(...parts);
+  });
+  
+  return <>{elements}</>;
+}
+
 export function ChatWidget({ token, dataLoaded = false }: ChatWidgetProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -169,14 +203,16 @@ export function ChatWidget({ token, dataLoaded = false }: ChatWidgetProps) {
                     />
                   )}
                   <div
-                    className={`max-w-[75%] px-4 py-2.5 rounded-2xl ${
+                    className={`max-w-[80%] px-4 py-3 rounded-2xl ${
                       msg.role === 'user'
                         ? 'rounded-br-sm text-white'
-                        : 'bg-gray-100 text-gray-800 rounded-bl-sm'
+                        : 'bg-gray-50 text-gray-800 rounded-bl-sm border border-gray-100'
                     }`}
                     style={msg.role === 'user' ? { backgroundColor: '#10a37f' } : {}}
                   >
-                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                    <div className="text-sm leading-relaxed">
+                      {msg.role === 'assistant' ? parseMarkdown(msg.content) : msg.content}
+                    </div>
                   </div>
                 </div>
               ))}

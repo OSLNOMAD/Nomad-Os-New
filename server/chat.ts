@@ -28,8 +28,14 @@ function formatAccountContext(data: CustomerFullData, email: string): string {
   sections.push("");
 
   sections.push("=== THINGSPACE DEVICES ===");
-  sections.push("(Verizon carrier data: device/line status, connectivity, MDN/IMEI/ICCID identifiers, service plan)");
-  sections.push(JSON.stringify(data.devices, null, 2));
+  sections.push("(Verizon carrier/line status for each device)");
+  const simplifiedDevices = data.devices.map((device: any) => ({
+    carrierState: device.carrier?.state || device.state || "unknown",
+    lastConnectionDate: device.lastConnectionDate ? device.lastConnectionDate.split('T')[0] : null,
+    imei: device.identifiers?.imei || null,
+    iccid: device.identifiers?.iccid || null,
+  }));
+  sections.push(JSON.stringify(simplifiedDevices, null, 2));
 
   return sections.join("\n");
 }
