@@ -158,11 +158,12 @@ npm run db:push  # Push database schema
   - Helper arrays (allSubscriptions, allInvoices, allTransactions) for flattened data access
   - IMEI/ICCID display in Orders section from Shipstation advancedOptions.customField1/2
   - Optimized API calls: Shopify orders by email parameter, Shipstation orders by order numbers
-- Jan 28, 2026: AI Customer Support Chatbot
-  - Added OpenAI GPT-4o-mini integration for customer support chatbot
+- Jan 28, 2026: AI Customer Support Chatbot (JADA)
+  - Added OpenAI GPT-4o-mini integration for customer support chatbot named "JADA"
   - Floating chat widget on Dashboard (src/components/ChatWidget.tsx)
   - /api/chat endpoint passes full account context to AI (server/chat.ts)
   - Context includes: subscriptions, invoices, orders, devices, billing info
-  - System prompt guides AI to answer account questions professionally
   - Conversation history maintained for follow-up questions
   - Cost-effective: ~$0.001 per message with GPT-4o-mini
+  - **To edit AI instructions**: Modify `SYSTEM_PROMPT` constant in `server/chat.ts` (lines 100-116)
+  - Uses JADA robot avatar (public/jada-avatar.png) for branding
