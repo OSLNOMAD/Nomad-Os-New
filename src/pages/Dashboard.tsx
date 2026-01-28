@@ -106,6 +106,8 @@ interface CombinedOrder {
     shipDate: string | null
     status: string
   }>
+  imei: string | null
+  iccid: string | null
 }
 
 interface ThingspaceDevice {
@@ -620,6 +622,26 @@ export default function Dashboard() {
                               </div>
                             </div>
                           ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {(order.imei || order.iccid) && (
+                      <div className="border-t border-gray-100 pt-4 mt-4">
+                        <p className="text-sm font-medium text-text mb-2">Device Information</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                          {order.imei && (
+                            <div>
+                              <span className="text-muted">IMEI:</span>
+                              <span className="ml-2 font-mono text-text">{order.imei}</span>
+                            </div>
+                          )}
+                          {order.iccid && (
+                            <div>
+                              <span className="text-muted">ICCID:</span>
+                              <span className="ml-2 font-mono text-text">{order.iccid}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}

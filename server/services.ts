@@ -256,6 +256,8 @@ export interface ShipstationOrder {
   customField1: string | null;
   customField2: string | null;
   customField3: string | null;
+  imei: string | null;
+  iccid: string | null;
   weight: { value: number; units: string } | null;
   dimensions: { length: number; width: number; height: number; units: string } | null;
   insuranceOptions: {
@@ -381,6 +383,8 @@ export interface CombinedOrder {
     shipDate: string | null;
     status: string;
   }>;
+  imei: string | null;
+  iccid: string | null;
   shopifyData?: ShopifyOrder;
   shipstationData?: ShipstationOrder;
 }
@@ -630,7 +634,7 @@ export async function fetchShopifyOrders(email: string): Promise<ShopifyOrder[]>
   
   try {
     const response = await fetch(
-      `https://nomadinternet.myshopify.com/admin/api/2024-01/orders.json?status=any&limit=250`,
+      `https://nomadinternet.myshopify.com/admin/api/2024-01/orders.json?status=any&email=${encodeURIComponent(email)}&limit=250`,
       {
         method: 'GET',
         headers: {
@@ -643,9 +647,7 @@ export async function fetchShopifyOrders(email: string): Promise<ShopifyOrder[]>
     if (!response.ok) return [];
     
     const data = await response.json() as any;
-    const orders = (data.orders || []).filter(
-      (o: any) => o.email?.toLowerCase() === email.toLowerCase()
-    );
+    const orders = data.orders || [];
     
     return orders.map((o: any) => ({
       orderNumber: o.name,
@@ -729,18 +731,17 @@ export async function fetchShopifyOrders(email: string): Promise<ShopifyOrder[]>
   }
 }
 
-export async function fetchShipstationOrders(email: string): Promise<ShipstationOrder[]> {
-  if (!SHIPSTATION_API_KEY || !SHIPSTATION_API_SECRET) return [];
+export async function fetchShipstationOrdersByNumbers(orderNumbers: string[]): Promise<ShipstationOrder[]> {
+  if (!SHIPSTATION_API_KEY || !SHIPSTATION_API_SECRET || orderNumbers.length === 0) return [];
   
   try {
     const credentials = Buffer.from(`${SHIPSTATION_API_KEY}:${SHIPSTATION_API_SECRET}`).toString('base64');
     let allOrders: any[] = [];
-    let page = 1;
-    const pageSize = 100;
     
-    while (page <= 5) {
+    for (const orderNumber of orderNumbers) {
+      const cleanOrderNumber = orderNumber.replace('#', '');
       const response = await fetch(
-        `https://ssapi.shipstation.com/orders?pageSize=${pageSize}&page=${page}&sortBy=OrderDate&sortDir=DESC`,
+        `https://ssapi.shipstation.com/orders?orderNumber=${encodeURIComponent(cleanOrderNumber)}`,
         {
           method: 'GET',
           headers: {
@@ -750,19 +751,14 @@ export async function fetchShipstationOrders(email: string): Promise<Shipstation
         }
       );
       
-      if (!response.ok) break;
+      if (!response.ok) continue;
       
       const data = await response.json() as any;
       const orders = data.orders || [];
       allOrders = allOrders.concat(orders);
-      
-      if (orders.length < pageSize) break;
-      page++;
     }
     
-    const customerOrders = allOrders.filter(
-      (o: any) => o.customerEmail?.toLowerCase() === email.toLowerCase()
-    );
+    const customerOrders = allOrders;
     
     return customerOrders.map((o: any) => ({
       orderNumber: o.orderNumber,
@@ -793,9 +789,11 @@ export async function fetchShipstationOrders(email: string): Promise<Shipstation
       confirmation: o.confirmation || null,
       shipDate: o.shipDate || null,
       holdUntilDate: o.holdUntilDate || null,
-      customField1: o.customField1 || null,
-      customField2: o.customField2 || null,
-      customField3: o.customField3 || null,
+      customField1: o.advancedOptions?.customField1 || null,
+      customField2: o.advancedOptions?.customField2 || null,
+      customField3: o.advancedOptions?.customField3 || null,
+      imei: o.advancedOptions?.customField1 || null,
+      iccid: o.advancedOptions?.customField2 || null,
       weight: o.weight || null,
       dimensions: o.dimensions || null,
       insuranceOptions: o.insuranceOptions || null,
@@ -944,6 +942,8 @@ export function combineOrders(shopifyOrders: ShopifyOrder[], shipstationOrders: 
         phone: so.shippingAddress.phone
       } : null,
       tracking,
+      imei: matchingSS?.imei || null,
+      iccid: matchingSS?.iccid || null,
       shopifyData: so,
       shipstationData: matchingSS
     });
@@ -994,6 +994,8 @@ export function combineOrders(shopifyOrders: ShopifyOrder[], shipstationOrders: 
           phone: ss.shipTo.phone
         } : null,
         tracking,
+        imei: ss.imei || null,
+        iccid: ss.iccid || null,
         shipstationData: ss
       });
     }
@@ -1127,11 +1129,13 @@ export async function fetchThingspaceDevice(iccid: string): Promise<ThingspaceDe
 }
 
 export async function fetchCustomerFullData(email: string): Promise<CustomerFullData> {
-  const [chargebee, shopifyOrders, shipstationOrders] = await Promise.all([
+  const [chargebee, shopifyOrders] = await Promise.all([
     fetchChargebeeData(email),
-    fetchShopifyOrders(email),
-    fetchShipstationOrders(email)
+    fetchShopifyOrders(email)
   ]);
+  
+  const orderNumbers = shopifyOrders.map(o => o.orderNumber);
+  const shipstationOrders = await fetchShipstationOrdersByNumbers(orderNumbers);
   
   const orders = combineOrders(shopifyOrders, shipstationOrders);
   
