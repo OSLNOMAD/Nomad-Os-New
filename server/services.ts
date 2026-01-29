@@ -758,25 +758,35 @@ export async function fetchShipstationOrdersByNumbers(orderNumbers: string[]): P
     const credentials = Buffer.from(`${SHIPSTATION_API_KEY}:${SHIPSTATION_API_SECRET}`).toString('base64');
     let allOrders: any[] = [];
     
-    for (const orderNumber of orderNumbers) {
+    const limitedOrderNumbers = orderNumbers.slice(0, 20);
+    
+    const fetchOrder = async (orderNumber: string) => {
       const cleanOrderNumber = orderNumber.replace('#', '');
-      const response = await fetch(
-        `https://ssapi.shipstation.com/orders?orderNumber=${encodeURIComponent(cleanOrderNumber)}`,
-        {
-          method: 'GET',
-          headers: {
-            'Authorization': `Basic ${credentials}`,
-            'Content-Type': 'application/json',
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const response = await fetch(
+          `https://ssapi.shipstation.com/orders?orderNumber=${encodeURIComponent(cleanOrderNumber)}`,
+          {
+            method: 'GET',
+            headers: {
+              'Authorization': `Basic ${credentials}`,
+              'Content-Type': 'application/json',
+            },
+            signal: controller.signal
           }
-        }
-      );
-      
-      if (!response.ok) continue;
-      
-      const data = await response.json() as any;
-      const orders = data.orders || [];
-      allOrders = allOrders.concat(orders);
-    }
+        );
+        clearTimeout(timeoutId);
+        if (!response.ok) return [];
+        const data = await response.json() as any;
+        return data.orders || [];
+      } catch {
+        return [];
+      }
+    };
+    
+    const results = await Promise.all(limitedOrderNumbers.map(fetchOrder));
+    allOrders = results.flat();
     
     const customerOrders = allOrders;
     
@@ -1170,12 +1180,16 @@ export async function fetchCustomerFullData(email: string): Promise<CustomerFull
     }
   }
   
-  for (const iccid of iccidsToCheck) {
-    const device = await fetchThingspaceDevice(iccid);
-    if (device) {
-      devices.push(device);
-    }
-  }
+  const deviceResults = await Promise.all(
+    [...iccidsToCheck].map(async (iccid) => {
+      try {
+        return await fetchThingspaceDevice(iccid);
+      } catch {
+        return null;
+      }
+    })
+  );
+  devices.push(...deviceResults.filter((d): d is ThingspaceDevice => d !== null));
   
   return {
     chargebee,
