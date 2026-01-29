@@ -172,6 +172,10 @@ interface SubscriptionDetail {
   transactions: ChargebeeTransaction[]
 }
 
+const isInvoiceCollectible = (status: string): boolean => {
+  return ['payment_due', 'not_paid'].includes(status)
+}
+
 export default function Dashboard() {
   const navigate = useNavigate()
   const [customer, setCustomer] = useState<Customer | null>(null)
@@ -307,6 +311,8 @@ export default function Dashboard() {
 
   const allSubscriptions = fullData?.chargebee.customers.flatMap(c => c.subscriptions) || []
   const allInvoices = fullData?.chargebee.customers.flatMap(c => c.invoices) || []
+  const collectibleInvoices = allInvoices.filter(inv => inv.amountDue > 0 && isInvoiceCollectible(inv.status))
+  const hasCollectibleInvoices = collectibleInvoices.length > 0
   const allTransactions = fullData?.chargebee.customers.flatMap(c => c.transactions) || []
 
   const openSubscriptionDetail = (subscription: ChargebeeSubscription, cbCustomer: ChargebeeCustomer) => {
@@ -876,13 +882,13 @@ export default function Dashboard() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h2 className="text-xl font-semibold text-text">Invoices & Transactions</h2>
-                  {fullData?.chargebee.totalDue && fullData.chargebee.totalDue > 0 && (
+                  {hasCollectibleInvoices && (
                     <button
                       onClick={() => fullData?.chargebee.customers[0]?.id && handlePayNow(fullData.chargebee.customers[0].id)}
                       disabled={paymentLoading === 'pay'}
                       className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
                     >
-                      {paymentLoading === 'pay' ? 'Loading...' : `Pay All Due (${formatCurrency(fullData.chargebee.totalDue)})`}
+                      {paymentLoading === 'pay' ? 'Loading...' : `Pay All Due (${formatCurrency(collectibleInvoices.reduce((sum, inv) => sum + inv.amountDue, 0))})`}
                     </button>
                   )}
                 </div>
@@ -921,7 +927,7 @@ export default function Dashboard() {
                             {formatCurrency(inv.amountDue)}
                           </td>
                           <td className="px-4 py-4 text-right">
-                            {inv.amountDue > 0 ? (
+                            {inv.amountDue > 0 && isInvoiceCollectible(inv.status) ? (
                               <button
                                 onClick={() => handleCollectPayment(inv.id)}
                                 disabled={paymentLoading === inv.id}
@@ -929,6 +935,8 @@ export default function Dashboard() {
                               >
                                 {paymentLoading === inv.id ? '...' : 'Pay Now'}
                               </button>
+                            ) : inv.amountDue > 0 ? (
+                              <span className="text-xs text-yellow-600">Pending</span>
                             ) : (
                               <span className="text-xs text-green-600">Paid</span>
                             )}
@@ -1141,7 +1149,7 @@ export default function Dashboard() {
                               {formatCurrency(inv.amountDue)}
                             </td>
                             <td className="px-4 py-3 text-right">
-                              {inv.amountDue > 0 && (
+                              {inv.amountDue > 0 && isInvoiceCollectible(inv.status) ? (
                                 <button
                                   onClick={() => handleCollectPayment(inv.id)}
                                   disabled={paymentLoading === inv.id}
@@ -1149,7 +1157,9 @@ export default function Dashboard() {
                                 >
                                   {paymentLoading === inv.id ? '...' : 'Pay'}
                                 </button>
-                              )}
+                              ) : inv.amountDue > 0 ? (
+                                <span className="text-xs text-yellow-600">Pending</span>
+                              ) : null}
                             </td>
                           </tr>
                         ))}
