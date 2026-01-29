@@ -10,9 +10,10 @@ channel = "stable-24_11"
 packages = ["jq"]
 
 [deployment]
-run = ["node", "index.js"]
+run = ["npm", "run", "start"]
 deploymentTarget = "autoscale"
 ignorePorts = false
+build = ["npm", "run", "build"]
 
 [agent]
 expertMode = true

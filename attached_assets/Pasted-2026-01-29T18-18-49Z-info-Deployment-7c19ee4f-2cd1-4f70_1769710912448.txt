@@ -1,0 +1,58 @@
+2026-01-29T18:18:49Z info: Deployment: 7c19ee4f-2cd1-4f70-bc5f-375bce127c43
+2026-01-29T18:18:49Z info: Build: cd790fe1-37cc-46ee-8622-54a024e84490
+2026-01-29T18:18:49Z info: Running Security Scan
+2026-01-29T18:18:52Z info: Security Scan Complete
+2026-01-29T18:18:52Z info: Connecting to builder
+2026-01-29T18:18:53Z info: Builder connected
+2026-01-29T18:18:54Z info: Installing packages
+--> npm install
+
+76 packages are looking for funding
+
+  run `npm fund` for details
+
+
+4 moderate severity vulnerabilities
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+
+npm notice
+npm notice New major version of npm available! 10.8.2 -> 11.8.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.8.0
+npm notice To update run: npm install -g npm@11.8.0
+npm notice
+
+2026-01-29T18:18:57Z info: Skipping Build as no Build command set
+2026-01-29T18:18:57Z info: Pushing pid1 binary layer...
+2026-01-29T18:19:01Z info: Pushing Repl layer...
+2026-01-29T18:19:01Z info: Pushing hosting layer...
+2026-01-29T18:19:02Z info: Retrieved cached nix layer
+2026-01-29T18:19:03Z info: Created hosting layer
+2026-01-29T18:19:12Z info: Created pid1 binary layer
+2026-01-29T18:19:41Z info: Created Repl layer
+2026-01-29T18:19:49Z info: Pushed image manifest
+2026-01-29T18:19:53Z info: Pushed soci index manifest
+2026-01-29T18:19:57Z info: Creating Autoscale service
+  ^
+command finished with error [node index.js]: exit status 1
+starting up user application
+
+  throw err;
+    at node:internal/main/run_main_module:28:49 {
+  ^
+  requireStack: []
+Error: Cannot find module '/home/runner/workspace/index.js'
+Error: Cannot find module '/home/runner/workspace/index.js'
+
+
+command finished with error [node index.js]: exit status 1
+  code: 'MODULE_NOT_FOUND',
+  ^
+
+  throw err;
+    at node:internal/main/run_main_module:28:49 {
+crash loop detected
+2026-01-29T18:21:21Z error: The deployment is crash looping. This can happen if the run command fails or exits immediately after starting. Check the logs for more information.
