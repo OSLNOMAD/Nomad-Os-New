@@ -14,12 +14,14 @@ export default function SignIn() {
   const [otp, setOtp] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
+  const [showNewPortalMessage, setShowNewPortalMessage] = useState(false)
   const [method, setMethod] = useState<SignInMethod>('password')
   const [step, setStep] = useState<Step>('credentials')
 
   const handlePasswordSignIn = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setShowNewPortalMessage(false)
     setIsLoading(true)
 
     try {
@@ -32,6 +34,10 @@ export default function SignIn() {
       const data = await response.json()
 
       if (!response.ok) {
+        if (data.error?.includes('No account found')) {
+          setShowNewPortalMessage(true)
+          return
+        }
         throw new Error(data.error || 'Sign in failed')
       }
 
@@ -48,6 +54,7 @@ export default function SignIn() {
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setShowNewPortalMessage(false)
     setIsLoading(true)
 
     try {
@@ -60,6 +67,10 @@ export default function SignIn() {
       const data = await response.json()
 
       if (!response.ok) {
+        if (data.error?.includes('No account found')) {
+          setShowNewPortalMessage(true)
+          return
+        }
         throw new Error(data.error || 'Failed to send OTP')
       }
 
@@ -159,7 +170,24 @@ export default function SignIn() {
           />
         )}
 
-        {error && (
+        {showNewPortalMessage && (
+          <div className="bg-gradient-to-r from-primary/10 to-accent/10 border border-primary/30 rounded-xl p-5 text-center">
+            <div className="text-2xl mb-2">🎉</div>
+            <h3 className="text-lg font-semibold text-text mb-2">Welcome to Our New Portal!</h3>
+            <p className="text-sm text-muted mb-4">
+              We've launched an improved customer portal with enhanced features. 
+              Please sign up to create your account and access your Nomad Internet services.
+            </p>
+            <Link 
+              to="/signup" 
+              className="inline-block w-full py-3 px-6 bg-gradient-to-r from-primary to-accent text-white font-semibold rounded-lg hover:shadow-lg transition-all"
+            >
+              Sign Up Now
+            </Link>
+          </div>
+        )}
+
+        {error && !showNewPortalMessage && (
           <div className="error-message">{error}</div>
         )}
 
