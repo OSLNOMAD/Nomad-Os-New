@@ -985,12 +985,13 @@ export default function Dashboard() {
                     const now = new Date()
                     const daysSinceDue = Math.floor((now.getTime() - dueSinceDate.getTime()) / (1000 * 60 * 60 * 24))
                     const gracePeriodDays = 3
-                    const daysRemaining = gracePeriodDays - daysSinceDue
                     
-                    if (daysRemaining > 0) {
-                      return { inGracePeriod: true, daysRemaining, daysOverdue: 0 }
+                    if (daysSinceDue <= gracePeriodDays) {
+                      const daysRemaining = gracePeriodDays - daysSinceDue
+                      return { inGracePeriod: true, daysRemaining: daysRemaining + 1, daysOverdue: 0 }
                     } else {
-                      return { inGracePeriod: false, daysRemaining: 0, daysOverdue: Math.abs(daysRemaining) }
+                      const daysOverdue = daysSinceDue - gracePeriodDays
+                      return { inGracePeriod: false, daysRemaining: 0, daysOverdue }
                     }
                   }
                   const gracePeriod = getGracePeriodInfo()
