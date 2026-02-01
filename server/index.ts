@@ -1163,11 +1163,27 @@ app.get("/api/device/plans", async (req, res) => {
     }
 
     const { getAvailablePlans } = await import('./services');
-    const plans = await getAvailablePlans();
+    const allPlans = await getAvailablePlans();
 
-    if (!plans) {
+    if (!allPlans) {
       return res.status(500).json({ error: "Failed to fetch available plans" });
     }
+
+    // Filter to only show specific approved plans
+    const allowedPlanCodes = [
+      '59142x48526x84777',
+      '59142x48526x90274',
+      '59145x48526x84777',
+      '64186x48526x75803x84777',
+      '64186x48526x73578x76193',
+      '64186x48526x84777',
+      '64186x48526x54307x90274',
+      'Static 5G Bus Internet 100MBPS'
+    ];
+    
+    const plans = allPlans.filter((plan: any) => 
+      allowedPlanCodes.includes(plan.code) || allowedPlanCodes.includes(plan.name)
+    );
 
     res.json({ success: true, plans });
   } catch (error: any) {
