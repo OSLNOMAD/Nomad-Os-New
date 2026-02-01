@@ -174,6 +174,7 @@ export default function Dashboard() {
   const [changePlanStatus, setChangePlanStatus] = useState<{
     step: 'loading' | 'selecting' | 'submitting' | 'success' | 'error'
     message: string
+    currentPlan?: string
   } | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -300,7 +301,8 @@ export default function Dashboard() {
   const allSubscriptions = fullData?.chargebee.customers.flatMap(c => c.subscriptions) || []
   const allInvoices = fullData?.chargebee.customers.flatMap(c => c.invoices) || []
   const collectibleInvoices = allInvoices.filter(inv => inv.amountDue > 0 && isInvoiceCollectible(inv.status))
-  const hasCollectibleInvoices = collectibleInvoices.length > 0
+  // hasCollectibleInvoices could be used for UI logic if needed
+void collectibleInvoices.length
   const allTransactions = fullData?.chargebee.customers.flatMap(c => c.transactions) || []
 
   const openSubscriptionDetail = (subscription: ChargebeeSubscription, cbCustomer: ChargebeeCustomer) => {
@@ -489,7 +491,7 @@ export default function Dashboard() {
     }
   }
 
-  const startWaitingTimer = (identifier: string, identifierType: string, iccidDisplay: string) => {
+  const startWaitingTimer = (_identifier: string, _identifierType: string, iccidDisplay: string) => {
     let timeRemaining = 300
     
     setTroubleshootingStatus({
@@ -600,7 +602,7 @@ export default function Dashboard() {
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
-  const handleChangePlan = async (subscriptionId: string, currentPlan: string, iccid: string | null, imei: string | null, mdn: string | null) => {
+  const handleChangePlan = async (subscriptionId: string, currentPlan: string, _iccid: string | null, _imei: string | null, _mdn: string | null) => {
     if (changePlanSubscription === subscriptionId) {
       setChangePlanSubscription(null)
       setChangePlanStatus(null)
@@ -633,7 +635,7 @@ export default function Dashboard() {
     }
   }
 
-  const handleSubmitPlanChange = async (subscriptionId: string, iccid: string | null, imei: string | null, mdn: string | null) => {
+  const handleSubmitPlanChange = async (_subscriptionId: string, iccid: string | null, imei: string | null, mdn: string | null) => {
     if (!selectedNewPlan) {
       setChangePlanStatus({ step: 'error', message: 'Please select a new plan' })
       return
