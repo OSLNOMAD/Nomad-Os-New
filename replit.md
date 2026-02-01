@@ -196,3 +196,10 @@ npm run db:push  # Push database schema
     - Grace period message shows remaining days and encourages payment
     - After 3 days: Red "Unpaid" badge with "Payment Overdue" message showing days overdue
   - Test portal at /testing6699452 for testing with any email (no database storage)
+- Feb 1, 2026: Device Plan Change Feature
+  - "Change Plan" button in Internet tab subscription cards
+  - Fetches available plans from ThingSpace API (/api/device/plans)
+  - Dropdown selector showing plan name and code
+  - Backend verifies device ownership before allowing plan changes
+  - Current plan derived from ThingSpace API (not client-supplied) for security
+  - API endpoints: GET /api/device/plans, POST /api/device/change-plan
