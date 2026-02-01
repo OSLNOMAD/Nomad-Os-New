@@ -1554,6 +1554,94 @@ export default function Dashboard() {
                                 </div>
                               </div>
                             )}
+                            
+                            {/* Change Plan Button */}
+                            <button
+                              onClick={() => handleChangePlan(subscription.id, device?.carrier?.servicePlan || '', subscription.iccid, subscription.imei, subscription.mdn)}
+                              className={`w-full mt-3 px-4 py-3 text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2 ${
+                                changePlanSubscription === subscription.id 
+                                  ? 'bg-indigo-600 text-white' 
+                                  : 'bg-white text-indigo-600 border-2 border-indigo-600 hover:bg-indigo-50'
+                              }`}
+                            >
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                              </svg>
+                              {changePlanSubscription === subscription.id ? 'Close' : 'Change Plan'}
+                            </button>
+                            
+                            {/* Change Plan UI */}
+                            {changePlanSubscription === subscription.id && changePlanStatus && (
+                              <div className="mt-4 bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+                                {changePlanStatus.step === 'loading' && (
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                                    <p className="text-indigo-700">Loading available plans...</p>
+                                  </div>
+                                )}
+                                {changePlanStatus.step === 'selecting' && (
+                                  <div className="space-y-3">
+                                    <p className="font-medium text-indigo-800">Select a new plan:</p>
+                                    {changePlanStatus.currentPlan && (
+                                      <p className="text-sm text-indigo-600">Current plan: <span className="font-semibold">{changePlanStatus.currentPlan}</span></p>
+                                    )}
+                                    <div>
+                                      <select
+                                        value={selectedNewPlan}
+                                        onChange={(e) => setSelectedNewPlan(e.target.value)}
+                                        className="w-full px-3 py-2 border border-indigo-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                      >
+                                        <option value="">Choose a plan...</option>
+                                        {availablePlans.map((plan) => (
+                                          <option key={plan.code} value={plan.code}>
+                                            {plan.name} ({plan.code})
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    <button
+                                      onClick={() => handleSubmitPlanChange(subscription.id, subscription.iccid, subscription.imei, subscription.mdn)}
+                                      disabled={!selectedNewPlan}
+                                      className="w-full px-4 py-3 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                      Submit Plan Change
+                                    </button>
+                                  </div>
+                                )}
+                                {changePlanStatus.step === 'submitting' && (
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                                    <p className="text-indigo-700">{changePlanStatus.message}</p>
+                                  </div>
+                                )}
+                                {changePlanStatus.step === 'success' && (
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center">
+                                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                      </svg>
+                                    </div>
+                                    <div>
+                                      <p className="font-semibold text-green-800">Plan Changed Successfully</p>
+                                      <p className="text-sm text-green-700">{changePlanStatus.message}</p>
+                                    </div>
+                                  </div>
+                                )}
+                                {changePlanStatus.step === 'error' && (
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-full bg-red-500 flex items-center justify-center">
+                                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                      </svg>
+                                    </div>
+                                    <div>
+                                      <p className="font-semibold text-red-800">Error</p>
+                                      <p className="text-sm text-red-700">{changePlanStatus.message}</p>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
                         )}
                         
