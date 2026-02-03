@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -30,6 +30,9 @@ export default function Troubleshoot() {
   const [lineStatus, setLineStatus] = useState<string | null>(null);
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const hasInitialized = useRef(false);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -38,6 +41,11 @@ export default function Troubleshoot() {
   };
 
   const getToken = () => localStorage.getItem('auth_token');
+
+  const normalizeStatus = (status: string | null): string => {
+    if (!status) return 'unknown';
+    return status.toLowerCase().replace(/[-_\s]/g, '');
+  };
 
   const checkLineStatus = useCallback(async (): Promise<string | null> => {
     const token = getToken();
@@ -94,42 +102,15 @@ export default function Troubleshoot() {
     }
   };
 
-  const startTimer = (seconds: number, onComplete: () => void) => {
-    setTimeRemaining(seconds);
-    const interval = setInterval(() => {
-      setTimeRemaining(prev => {
-        if (prev <= 1) {
-          clearInterval(interval);
-          onComplete();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return interval;
-  };
-
-  const normalizeStatus = (status: string | null): string => {
-    if (!status) return 'unknown';
-    return status.toLowerCase().replace(/[-_\s]/g, '');
-  };
-
-  const handleFirstRecheck = useCallback(async () => {
-    setStep('rechecking_first');
-    const status = await checkLineStatus();
-    const normalized = normalizeStatus(status);
-
-    if (normalized === 'active') {
-      setStep('success');
-    } else if (normalized === 'pendingresume' || normalized === 'pending') {
-      setStep('waiting_extended');
-      startTimer(60, handleExtendedRecheck);
-    } else {
-      setStep('escalated');
+  const clearTimer = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
     }
-  }, [checkLineStatus]);
+  };
 
   const handleExtendedRecheck = useCallback(async () => {
+    clearTimer();
     setStep('rechecking_extended');
     const status = await checkLineStatus();
     const normalized = normalizeStatus(status);
@@ -141,12 +122,64 @@ export default function Troubleshoot() {
     }
   }, [checkLineStatus]);
 
+  const startExtendedTimer = useCallback(() => {
+    setStep('waiting_extended');
+    setTimeRemaining(60);
+    
+    timerRef.current = setInterval(() => {
+      setTimeRemaining(prev => {
+        if (prev <= 1) {
+          handleExtendedRecheck();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, [handleExtendedRecheck]);
+
+  const handleFirstRecheck = useCallback(async () => {
+    clearTimer();
+    setStep('rechecking_first');
+    const status = await checkLineStatus();
+    const normalized = normalizeStatus(status);
+
+    if (normalized === 'active') {
+      setStep('success');
+    } else if (normalized === 'pendingresume' || normalized === 'pending') {
+      startExtendedTimer();
+    } else {
+      setStep('escalated');
+    }
+  }, [checkLineStatus, startExtendedTimer]);
+
+  const startFirstTimer = useCallback(() => {
+    setStep('waiting_first');
+    setTimeRemaining(120);
+    
+    timerRef.current = setInterval(() => {
+      setTimeRemaining(prev => {
+        if (prev <= 1) {
+          handleFirstRecheck();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, [handleFirstRecheck]);
+
+  useEffect(() => {
+    return () => clearTimer();
+  }, []);
+
   useEffect(() => {
     if (!identifier) {
       setError('Missing device information');
       setStep('error');
       return;
     }
+
+    if (hasInitialized.current) return;
+    hasInitialized.current = true;
 
     const init = async () => {
       const status = await checkLineStatus();
@@ -158,21 +191,18 @@ export default function Troubleshoot() {
         setStep('resuming');
         const resumed = await resumeLine();
         if (resumed) {
-          setStep('waiting_first');
-          startTimer(120, handleFirstRecheck);
+          startFirstTimer();
         } else {
           setError('Failed to initiate line restoration');
           setStep('error');
         }
       } else if (normalized === 'pendingresume' || normalized === 'pending' || normalized === 'pendingsuspend') {
-        setStep('waiting_extended');
-        startTimer(60, handleExtendedRecheck);
+        startExtendedTimer();
       } else if (!status) {
         setStep('resuming');
         const resumed = await resumeLine();
         if (resumed) {
-          setStep('waiting_first');
-          startTimer(120, handleFirstRecheck);
+          startFirstTimer();
         } else {
           setError('Failed to initiate line restoration');
           setStep('error');
@@ -183,7 +213,7 @@ export default function Troubleshoot() {
     };
 
     init();
-  }, [identifier, checkLineStatus, handleFirstRecheck, handleExtendedRecheck]);
+  }, [identifier, checkLineStatus, startFirstTimer, startExtendedTimer]);
 
   const progressPercentage = step === 'waiting_first' 
     ? ((120 - timeRemaining) / 120) * 100
