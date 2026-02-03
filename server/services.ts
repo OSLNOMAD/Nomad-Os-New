@@ -979,58 +979,6 @@ export function combineOrders(shopifyOrders: ShopifyOrder[], shipstationOrders: 
     });
   }
   
-  for (const ss of shipstationOrders) {
-    if (!processedShipstation.has(String(ss.orderId))) {
-      const tracking: CombinedOrder['tracking'] = [];
-      
-      for (const s of ss.shipments || []) {
-        if (s.trackingNumber) {
-          tracking.push({
-            carrier: s.carrierCode,
-            trackingNumber: s.trackingNumber,
-            trackingUrl: null,
-            shipDate: s.shipDate,
-            status: s.voided ? 'voided' : 'shipped'
-          });
-        }
-      }
-      
-      combined.push({
-        source: 'shipstation',
-        orderNumber: ss.orderNumber,
-        orderId: String(ss.orderId),
-        orderDate: ss.orderDate,
-        status: ss.orderStatus,
-        fulfillmentStatus: ss.orderStatus,
-        total: ss.orderTotal,
-        currency: 'USD',
-        paymentStatus: ss.amountPaid >= ss.orderTotal ? 'paid' : 'pending',
-        items: ss.items.map(i => ({
-          name: i.name,
-          sku: i.sku,
-          quantity: i.quantity,
-          price: i.unitPrice,
-          imageUrl: i.imageUrl,
-          fulfillmentStatus: null
-        })),
-        shipping: ss.shipTo ? {
-          name: ss.shipTo.name,
-          address1: ss.shipTo.street1,
-          address2: ss.shipTo.street2,
-          city: ss.shipTo.city,
-          state: ss.shipTo.state,
-          zip: ss.shipTo.postalCode,
-          country: ss.shipTo.country,
-          phone: ss.shipTo.phone
-        } : null,
-        tracking,
-        imei: ss.imei || null,
-        iccid: ss.iccid || null,
-        shipstationData: ss
-      });
-    }
-  }
-  
   combined.sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime());
   
   return combined;
