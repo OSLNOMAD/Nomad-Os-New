@@ -547,6 +547,29 @@ void collectibleInvoices.length
           <>
             {activeTab === 'overview' && (
               <div className="space-y-6">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span className="font-medium text-blue-800">Missing a Subscription?</span>
+                      </div>
+                      <p className="text-sm text-blue-700">
+                        If you don't see a subscription associated with your device, you can activate it through our activation portal.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => window.open('https://activatenomad.com', '_blank')}
+                      className="flex-shrink-0 px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors"
+                      style={{ background: 'linear-gradient(135deg, #10a37f 0%, #0d8a6a 100%)' }}
+                    >
+                      Activate Device
+                    </button>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="bg-white rounded-lg border border-gray-200 p-6">
                     <p className="text-sm text-muted mb-1">Active Subscriptions</p>
@@ -627,29 +650,6 @@ void collectibleInvoices.length
                     {allTransactions.length === 0 && (
                       <p className="text-muted text-sm">No transactions found</p>
                     )}
-                  </div>
-                </div>
-
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <span className="font-medium text-blue-800">Missing a Subscription?</span>
-                      </div>
-                      <p className="text-sm text-blue-700">
-                        If you don't see a subscription associated with your device, you can activate it through our activation portal.
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => window.open('https://activatenomad.com', '_blank')}
-                      className="flex-shrink-0 px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors"
-                      style={{ background: 'linear-gradient(135deg, #10a37f 0%, #0d8a6a 100%)' }}
-                    >
-                      Activate Device
-                    </button>
                   </div>
                 </div>
 
