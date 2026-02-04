@@ -7,6 +7,17 @@ type TroubleshootStep =
   | 'active'
   | 'issue_not_working'
   | 'issue_speed'
+  | 'speed_q1_when'
+  | 'speed_q2_moved'
+  | 'speed_refresh_suspend'
+  | 'speed_refresh_resume'
+  | 'speed_refresh_power_cycle'
+  | 'speed_refresh_syncing'
+  | 'speed_device_testing'
+  | 'speed_outdoor_test'
+  | 'speed_outdoor_result'
+  | 'speed_escalate'
+  | 'speed_completed'
   | 'resuming'
   | 'waiting_first'
   | 'rechecking_first'
@@ -49,6 +60,17 @@ export default function Troubleshoot() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [escalationInfo, setEscalationInfo] = useState<EscalationInfo | null>(null);
   const [escalationTicketId, setEscalationTicketId] = useState<string>('');
+  
+  const [slowSpeedSessionId, setSlowSpeedSessionId] = useState<number | null>(null);
+  const [slowSpeedEligibility, setSlowSpeedEligibility] = useState<{
+    canRefresh: boolean;
+    daysUntilNextRefresh: number;
+    isSyncing: boolean;
+    syncMinutesRemaining: number;
+  } | null>(null);
+  const [issueOnset, setIssueOnset] = useState<'just_started' | 'ongoing' | null>(null);
+  const [modemMoved, setModemMoved] = useState<boolean | null>(null);
+  const [outdoorTestResult, setOutdoorTestResult] = useState<'improved' | 'same' | null>(null);
   
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasInitialized = useRef(false);
@@ -279,6 +301,149 @@ export default function Troubleshoot() {
     }
   };
 
+  const suspendLine = async (): Promise<boolean> => {
+    const token = getToken();
+    if (!token || !identifier) return false;
+
+    try {
+      const response = await fetch('/api/device/suspend', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          identifier,
+          identifierType
+        })
+      });
+
+      return response.ok;
+    } catch (err) {
+      console.error('Suspend error:', err);
+      return false;
+    }
+  };
+
+  const checkSlowSpeedEligibility = async () => {
+    const token = getToken();
+    if (!token || !subscriptionId) return null;
+
+    try {
+      const response = await fetch('/api/slow-speed/check-eligibility', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ subscriptionId })
+      });
+
+      if (!response.ok) return null;
+
+      const data = await response.json();
+      setSlowSpeedEligibility(data);
+      return data;
+    } catch (err) {
+      console.error('Check slow speed eligibility error:', err);
+      return null;
+    }
+  };
+
+  const startSlowSpeedSession = async (onset: string, moved: boolean | null) => {
+    const token = getToken();
+    if (!token || !subscriptionId) return null;
+
+    try {
+      const response = await fetch('/api/slow-speed/start-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          subscriptionId,
+          iccid: iccid || null,
+          imei: imei || null,
+          mdn: mdn || null,
+          issueOnset: onset,
+          modemMoved: moved
+        })
+      });
+
+      if (!response.ok) return null;
+
+      const data = await response.json();
+      setSlowSpeedSessionId(data.sessionId);
+      return data.sessionId;
+    } catch (err) {
+      console.error('Start slow speed session error:', err);
+      return null;
+    }
+  };
+
+  const startSlowSpeedRefresh = async (sessionId: number) => {
+    const token = getToken();
+    if (!token) return false;
+
+    try {
+      const response = await fetch('/api/slow-speed/start-refresh', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          sessionId,
+          subscriptionId,
+          mdn: mdn || null
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        if (errorData.daysUntilNextRefresh) {
+          setSlowSpeedEligibility({
+            canRefresh: false,
+            daysUntilNextRefresh: errorData.daysUntilNextRefresh,
+            isSyncing: false,
+            syncMinutesRemaining: 0
+          });
+        }
+        return false;
+      }
+
+      return true;
+    } catch (err) {
+      console.error('Start slow speed refresh error:', err);
+      return false;
+    }
+  };
+
+  const updateSlowSpeedSession = async (sessionId: number, data: Record<string, any>) => {
+    const token = getToken();
+    if (!token) return false;
+
+    try {
+      const response = await fetch('/api/slow-speed/update-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          sessionId,
+          ...data
+        })
+      });
+
+      return response.ok;
+    } catch (err) {
+      console.error('Update slow speed session error:', err);
+      return false;
+    }
+  };
+
   const clearTimer = () => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
@@ -359,6 +524,47 @@ export default function Troubleshoot() {
       });
     }, 1000);
   }, [handleFirstRecheck]);
+
+  const handleSlowSpeedResumeComplete = useCallback(async () => {
+    clearTimer();
+    setStep('speed_refresh_power_cycle');
+  }, []);
+
+  const startSlowSpeedResumeTimer = useCallback(async () => {
+    await resumeLine();
+    setStep('speed_refresh_resume');
+    setTimeRemaining(120);
+    
+    timerRef.current = setInterval(() => {
+      setTimeRemaining(prev => {
+        if (prev <= 1) {
+          handleSlowSpeedResumeComplete();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, [handleSlowSpeedResumeComplete]);
+
+  const handleSlowSpeedSuspendComplete = useCallback(async () => {
+    clearTimer();
+    await startSlowSpeedResumeTimer();
+  }, [startSlowSpeedResumeTimer]);
+
+  const startSlowSpeedSuspendTimer = useCallback(() => {
+    setStep('speed_refresh_suspend');
+    setTimeRemaining(120);
+    
+    timerRef.current = setInterval(() => {
+      setTimeRemaining(prev => {
+        if (prev <= 1) {
+          handleSlowSpeedSuspendComplete();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, [handleSlowSpeedSuspendComplete]);
 
   useEffect(() => {
     return () => clearTimer();
@@ -495,7 +701,10 @@ export default function Troubleshoot() {
                 </button>
                 
                 <button
-                  onClick={() => setStep('issue_speed')}
+                  onClick={async () => {
+                    await checkSlowSpeedEligibility();
+                    setStep('speed_q1_when');
+                  }}
                   className="w-full p-4 rounded-lg border border-gray-200 hover:border-primary hover:bg-gray-50 transition-all text-left flex items-center gap-4"
                 >
                   <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#f59e0b20' }}>
@@ -591,53 +800,547 @@ export default function Troubleshoot() {
                   </svg>
                 </div>
                 <p className="text-lg font-medium" style={{ color: '#0f172a' }}>Speed Issues</p>
-                <p className="text-gray-500 mt-2">Here are some tips to improve your speed</p>
+                <p className="text-gray-500 mt-2">Redirecting to troubleshooting...</p>
               </div>
-              
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-5 mb-6">
-                <h4 className="font-semibold text-blue-800 mb-3">Try these solutions:</h4>
-                <ul className="space-y-3 text-sm text-blue-700">
-                  <li className="flex items-start gap-2">
-                    <span className="font-bold">1.</span>
-                    <span><strong>Reboot your modem:</strong> Unplug it, wait 30 seconds, and plug it back in</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="font-bold">2.</span>
-                    <span><strong>Move closer to your device:</strong> Distance and walls can affect WiFi signal</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="font-bold">3.</span>
-                    <span><strong>Reduce connected devices:</strong> Too many devices can slow down your connection</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="font-bold">4.</span>
-                    <span><strong>Check for interference:</strong> Microwaves and other electronics can affect WiFi</span>
-                  </li>
-                </ul>
+            </motion.div>
+          )}
+
+          {step === 'speed_q1_when' && (
+            <motion.div
+              key="speed_q1_when"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="py-6 sm:py-8"
+            >
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center" style={{ backgroundColor: '#f59e0b20' }}>
+                  <svg className="w-8 h-8" style={{ color: '#f59e0b' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                </div>
+                <p className="text-lg font-medium" style={{ color: '#0f172a' }}>Speed Troubleshooting</p>
+                <p className="text-gray-500 mt-2">Let's diagnose your slow speed issue</p>
               </div>
-              
+
+              {slowSpeedEligibility?.isSyncing && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+                  <p className="text-sm text-amber-700">
+                    <strong>Connection syncing in progress.</strong> Your connection is still syncing from a recent refresh. Please wait {slowSpeedEligibility.syncMinutesRemaining} minutes before testing again.
+                  </p>
+                </div>
+              )}
+
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
-                <p className="text-sm text-gray-600">
-                  <strong>Still experiencing issues?</strong> Speed can vary based on network congestion and location. Contact our support team at <a href="tel:+18447677770" className="font-medium" style={{ color: '#10a37f' }}>1-844-767-7770</a> for further assistance.
+                <p className="font-medium mb-1" style={{ color: '#0f172a' }}>Question 1 of 2</p>
+                <p className="text-sm text-gray-600">Have you recently started experiencing slow speeds, or has this been happening for some time?</p>
+              </div>
+
+              <div className="space-y-3 mb-6">
+                <button
+                  onClick={() => {
+                    setIssueOnset('just_started');
+                    setStep('speed_q2_moved');
+                  }}
+                  className="w-full p-4 rounded-lg border border-gray-200 hover:border-primary hover:bg-gray-50 transition-all text-left"
+                >
+                  <p className="font-medium" style={{ color: '#0f172a' }}>This just started</p>
+                  <p className="text-sm text-gray-500">I was getting good speeds before</p>
+                </button>
+                
+                <button
+                  onClick={async () => {
+                    setIssueOnset('ongoing');
+                    const sessionId = await startSlowSpeedSession('ongoing', null);
+                    if (sessionId) {
+                      setStep('speed_device_testing');
+                    }
+                  }}
+                  className="w-full p-4 rounded-lg border border-gray-200 hover:border-primary hover:bg-gray-50 transition-all text-left"
+                >
+                  <p className="font-medium" style={{ color: '#0f172a' }}>It's been happening for a while</p>
+                  <p className="text-sm text-gray-500">Speeds have been consistently slow</p>
+                </button>
+              </div>
+
+              <button
+                onClick={() => setStep('active')}
+                className="w-full px-4 py-3 rounded-lg font-medium transition-all border border-gray-300 hover:bg-gray-50"
+                style={{ color: '#0f172a' }}
+              >
+                Back
+              </button>
+            </motion.div>
+          )}
+
+          {step === 'speed_q2_moved' && (
+            <motion.div
+              key="speed_q2_moved"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="py-6 sm:py-8"
+            >
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center" style={{ backgroundColor: '#f59e0b20' }}>
+                  <svg className="w-8 h-8" style={{ color: '#f59e0b' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </div>
+                <p className="text-lg font-medium" style={{ color: '#0f172a' }}>Device Location</p>
+              </div>
+
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
+                <p className="font-medium mb-1" style={{ color: '#0f172a' }}>Question 2 of 2</p>
+                <p className="text-sm text-gray-600">Has the modem been moved to a new location recently?</p>
+              </div>
+
+              <div className="space-y-3 mb-6">
+                <button
+                  onClick={async () => {
+                    setModemMoved(true);
+                    const sessionId = await startSlowSpeedSession('just_started', true);
+                    if (sessionId) {
+                      setStep('speed_device_testing');
+                    }
+                  }}
+                  className="w-full p-4 rounded-lg border border-gray-200 hover:border-primary hover:bg-gray-50 transition-all text-left"
+                >
+                  <p className="font-medium" style={{ color: '#0f172a' }}>Yes, it was moved</p>
+                  <p className="text-sm text-gray-500">The modem is in a new location</p>
+                </button>
+                
+                <button
+                  onClick={async () => {
+                    setModemMoved(false);
+                    setIsSubmitting(true);
+                    try {
+                      const sessionId = await startSlowSpeedSession('just_started', false);
+                      if (sessionId) {
+                        if (slowSpeedEligibility?.canRefresh) {
+                          const refreshSuccess = await startSlowSpeedRefresh(sessionId);
+                          if (refreshSuccess) {
+                            await suspendLine();
+                            startSlowSpeedSuspendTimer();
+                          } else {
+                            setStep('speed_device_testing');
+                          }
+                        } else {
+                          setStep('speed_device_testing');
+                        }
+                      }
+                    } finally {
+                      setIsSubmitting(false);
+                    }
+                  }}
+                  disabled={isSubmitting}
+                  className="w-full p-4 rounded-lg border border-gray-200 hover:border-primary hover:bg-gray-50 transition-all text-left disabled:opacity-50"
+                >
+                  <p className="font-medium" style={{ color: '#0f172a' }}>No, it's in the same spot</p>
+                  <p className="text-sm text-gray-500">The modem hasn't been moved</p>
+                  {isSubmitting && <span className="text-xs text-gray-400">Processing...</span>}
+                </button>
+              </div>
+
+              {slowSpeedEligibility && !slowSpeedEligibility.canRefresh && slowSpeedEligibility.daysUntilNextRefresh > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+                  <p className="text-sm text-amber-700">
+                    <strong>Note:</strong> A network refresh was performed recently. Another refresh will be available in {slowSpeedEligibility.daysUntilNextRefresh} days.
+                  </p>
+                </div>
+              )}
+
+              <button
+                onClick={() => setStep('speed_q1_when')}
+                className="w-full px-4 py-3 rounded-lg font-medium transition-all border border-gray-300 hover:bg-gray-50"
+                style={{ color: '#0f172a' }}
+              >
+                Back
+              </button>
+            </motion.div>
+          )}
+
+          {step === 'speed_refresh_suspend' && (
+            <motion.div
+              key="speed_refresh_suspend"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="py-6 sm:py-8"
+            >
+              <div className="text-center mb-6">
+                <div className="w-20 h-20 mx-auto mb-4 rounded-full flex items-center justify-center" style={{ backgroundColor: '#3b82f620' }}>
+                  <span className="text-2xl font-bold" style={{ color: '#3b82f6' }}>{formatTime(timeRemaining)}</span>
+                </div>
+                <p className="text-lg font-medium" style={{ color: '#0f172a' }}>Refreshing Network Connection</p>
+                <p className="text-gray-500 mt-2">We're refreshing your network connection. This takes about 2 minutes.</p>
+              </div>
+
+              <div className="w-full bg-gray-200 rounded-full h-2 mb-6">
+                <div 
+                  className="h-2 rounded-full transition-all duration-1000" 
+                  style={{ 
+                    backgroundColor: '#3b82f6',
+                    width: `${((120 - timeRemaining) / 120) * 100}%` 
+                  }}
+                />
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p className="text-sm text-blue-700">
+                  <strong>Please wait.</strong> Do not unplug or restart your modem during this process.
                 </p>
               </div>
-              
-              <div className="flex gap-3">
+            </motion.div>
+          )}
+
+          {step === 'speed_refresh_resume' && (
+            <motion.div
+              key="speed_refresh_resume"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="py-6 sm:py-8"
+            >
+              <div className="text-center mb-6">
+                <div className="w-20 h-20 mx-auto mb-4 rounded-full flex items-center justify-center" style={{ backgroundColor: '#10a37f20' }}>
+                  <span className="text-2xl font-bold" style={{ color: '#10a37f' }}>{formatTime(timeRemaining)}</span>
+                </div>
+                <p className="text-lg font-medium" style={{ color: '#0f172a' }}>Restoring Connection</p>
+                <p className="text-gray-500 mt-2">Your connection is being restored. Please wait while this completes.</p>
+              </div>
+
+              <div className="w-full bg-gray-200 rounded-full h-2 mb-6">
+                <div 
+                  className="h-2 rounded-full transition-all duration-1000" 
+                  style={{ 
+                    backgroundColor: '#10a37f',
+                    width: `${((120 - timeRemaining) / 120) * 100}%` 
+                  }}
+                />
+              </div>
+
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <p className="text-sm text-green-700">
+                  <strong>Almost done!</strong> Your connection will be ready for the final step shortly.
+                </p>
+              </div>
+            </motion.div>
+          )}
+
+          {step === 'speed_refresh_power_cycle' && (
+            <motion.div
+              key="speed_refresh_power_cycle"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="py-6 sm:py-8"
+            >
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center" style={{ backgroundColor: '#10a37f20' }}>
+                  <svg className="w-8 h-8" style={{ color: '#10a37f' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                </div>
+                <p className="text-lg font-medium" style={{ color: '#0f172a' }}>Power Cycle Required</p>
+                <p className="text-gray-500 mt-2">Please unplug your modem now</p>
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-5 mb-6">
+                <h4 className="font-semibold text-amber-800 mb-3">Follow these steps:</h4>
+                <ol className="list-decimal list-inside space-y-2 text-sm text-amber-700">
+                  <li><strong>Unplug your modem</strong> from power now</li>
+                  <li>Wait <strong>30 seconds</strong></li>
+                  <li><strong>Plug the modem back in</strong></li>
+                  <li>Wait 2-3 minutes for it to fully restart</li>
+                </ol>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                <p className="text-sm text-blue-700">
+                  <strong>Important:</strong> Changes can take up to 2 hours to fully sync. If speeds don't improve immediately, please wait and try again later.
+                </p>
+              </div>
+
+              <button
+                onClick={() => {
+                  if (slowSpeedSessionId) {
+                    updateSlowSpeedSession(slowSpeedSessionId, { sessionState: 'syncing' });
+                  }
+                  setStep('speed_device_testing');
+                }}
+                className="w-full px-6 py-3 rounded-lg text-white font-medium transition-all hover:shadow-lg"
+                style={{ backgroundColor: '#10a37f' }}
+              >
+                I've Completed the Power Cycle
+              </button>
+            </motion.div>
+          )}
+
+          {step === 'speed_device_testing' && (
+            <motion.div
+              key="speed_device_testing"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="py-6 sm:py-8"
+            >
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center" style={{ backgroundColor: '#3b82f620' }}>
+                  <svg className="w-8 h-8" style={{ color: '#3b82f6' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <p className="text-lg font-medium" style={{ color: '#0f172a' }}>Speed Optimization Steps</p>
+                <p className="text-gray-500 mt-2">Try these steps to improve your speed</p>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-5 mb-6">
+                <h4 className="font-semibold text-blue-800 mb-3">Complete these steps in order:</h4>
+                <ol className="list-decimal list-inside space-y-3 text-sm text-blue-700">
+                  <li>
+                    <strong>Reboot the modem</strong>
+                    <ul className="ml-5 mt-1 list-disc text-blue-600">
+                      <li>Unplug power, wait 30 seconds, plug back in</li>
+                    </ul>
+                  </li>
+                  <li>
+                    <strong>Reduce connected devices</strong>
+                    <ul className="ml-5 mt-1 list-disc text-blue-600">
+                      <li>Disconnect unused phones, TVs, cameras, or smart devices</li>
+                      <li>Test speeds with only one device connected</li>
+                    </ul>
+                  </li>
+                  <li>
+                    <strong>Move closer to the modem</strong>
+                    <ul className="ml-5 mt-1 list-disc text-blue-600">
+                      <li>Walls, floors, and distance reduce WiFi performance</li>
+                      <li>Test speeds within 5-10 feet of the modem</li>
+                    </ul>
+                  </li>
+                </ol>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3">
                 <button
-                  onClick={() => setStep('active')}
-                  className="flex-1 px-4 py-3 rounded-lg font-medium transition-all border border-gray-300 hover:bg-gray-50"
-                  style={{ color: '#0f172a' }}
+                  onClick={() => setStep('speed_outdoor_test')}
+                  className="flex-1 px-6 py-3 rounded-lg text-white font-medium transition-all hover:shadow-lg"
+                  style={{ backgroundColor: '#10a37f' }}
                 >
-                  Back
+                  Continue to Signal Test
                 </button>
                 <button
                   onClick={() => navigate('/dashboard')}
-                  className="flex-1 px-4 py-3 rounded-lg text-white font-medium transition-all hover:shadow-lg"
-                  style={{ backgroundColor: '#10a37f' }}
+                  className="flex-1 px-4 py-3 rounded-lg font-medium transition-all border border-gray-300 hover:bg-gray-50"
+                  style={{ color: '#0f172a' }}
                 >
                   Back to Dashboard
                 </button>
               </div>
+            </motion.div>
+          )}
+
+          {step === 'speed_outdoor_test' && (
+            <motion.div
+              key="speed_outdoor_test"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="py-6 sm:py-8"
+            >
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center" style={{ backgroundColor: '#10a37f20' }}>
+                  <svg className="w-8 h-8" style={{ color: '#10a37f' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <p className="text-lg font-medium" style={{ color: '#0f172a' }}>Outdoor Signal Test</p>
+                <p className="text-gray-500 mt-2">This is a critical step for wireless devices</p>
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-5 mb-6">
+                <h4 className="font-semibold text-amber-800 mb-3">Please do the following:</h4>
+                <p className="text-sm text-amber-700 mb-3">
+                  If possible, take the modem <strong>outside</strong> or place it <strong>near a window</strong> and test speeds again.
+                </p>
+                <p className="text-sm text-amber-600">
+                  This helps us determine whether the issue is <strong>signal strength</strong> or <strong>network capacity</strong>.
+                </p>
+              </div>
+
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
+                <p className="font-medium mb-2" style={{ color: '#0f172a' }}>Did speeds improve when testing outside/near window?</p>
+              </div>
+
+              <div className="space-y-3">
+                <button
+                  onClick={async () => {
+                    setOutdoorTestResult('improved');
+                    if (slowSpeedSessionId) {
+                      await updateSlowSpeedSession(slowSpeedSessionId, { 
+                        outdoorTestResult: 'improved',
+                        sessionState: 'completed'
+                      });
+                    }
+                    setStep('speed_outdoor_result');
+                  }}
+                  className="w-full p-4 rounded-lg border-2 border-green-200 hover:border-green-400 hover:bg-green-50 transition-all text-left"
+                >
+                  <p className="font-medium text-green-700">Yes, speeds improved outside</p>
+                </button>
+                
+                <button
+                  onClick={async () => {
+                    setOutdoorTestResult('same');
+                    if (slowSpeedSessionId) {
+                      await updateSlowSpeedSession(slowSpeedSessionId, { 
+                        outdoorTestResult: 'same',
+                        sessionState: 'completed'
+                      });
+                    }
+                    setStep('speed_outdoor_result');
+                  }}
+                  className="w-full p-4 rounded-lg border-2 border-gray-200 hover:border-gray-400 hover:bg-gray-50 transition-all text-left"
+                >
+                  <p className="font-medium" style={{ color: '#0f172a' }}>No, speeds stayed the same</p>
+                </button>
+
+                <button
+                  onClick={() => setStep('speed_device_testing')}
+                  className="w-full px-4 py-3 rounded-lg font-medium transition-all border border-gray-300 hover:bg-gray-50"
+                  style={{ color: '#0f172a' }}
+                >
+                  Back
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+          {step === 'speed_outdoor_result' && (
+            <motion.div
+              key="speed_outdoor_result"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="py-6 sm:py-8"
+            >
+              {outdoorTestResult === 'improved' ? (
+                <>
+                  <div className="text-center mb-6">
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center" style={{ backgroundColor: '#10a37f20' }}>
+                      <svg className="w-8 h-8" style={{ color: '#10a37f' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                    <p className="text-lg font-medium" style={{ color: '#0f172a' }}>Environmental Issue Identified</p>
+                    <p className="text-gray-500 mt-2">The issue is related to placement or environment</p>
+                  </div>
+
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-5 mb-6">
+                    <h4 className="font-semibold text-green-800 mb-3">Recommendations:</h4>
+                    <ul className="space-y-2 text-sm text-green-700">
+                      <li className="flex items-start gap-2">
+                        <span>•</span>
+                        <span>Relocate the modem <strong>closer to a window</strong> or in a <strong>higher location</strong></span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span>•</span>
+                        <span>Avoid placing the modem in basements, closets, or behind thick walls</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span>•</span>
+                        <span>Keep the modem away from other electronics that may cause interference</span>
+                      </li>
+                    </ul>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-center mb-6">
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center" style={{ backgroundColor: '#6b728020' }}>
+                      <svg className="w-8 h-8" style={{ color: '#6b7280' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <p className="text-lg font-medium" style={{ color: '#0f172a' }}>Network Capacity Assessment</p>
+                    <p className="text-gray-500 mt-2">This is likely the best available performance in your area</p>
+                  </div>
+
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-5 mb-6">
+                    <p className="text-sm text-gray-600">
+                      When speeds are similar both indoors and outdoors, it typically indicates this is the maximum speed available from the network in your location. Speed can vary based on network congestion, time of day, and tower capacity.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => setStep('speed_escalate')}
+                    className="w-full px-6 py-3 rounded-lg font-medium transition-all border-2 border-amber-200 hover:border-amber-400 hover:bg-amber-50 mb-3"
+                    style={{ color: '#d97706' }}
+                  >
+                    Still Having Issues? Contact Support
+                  </button>
+                </>
+              )}
+
+              <button
+                onClick={() => navigate('/dashboard')}
+                className="w-full px-6 py-3 rounded-lg text-white font-medium transition-all hover:shadow-lg"
+                style={{ backgroundColor: '#10a37f' }}
+              >
+                Back to Dashboard
+              </button>
+            </motion.div>
+          )}
+
+          {step === 'speed_escalate' && (
+            <motion.div
+              key="speed_escalate"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="py-6 sm:py-8"
+            >
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center" style={{ backgroundColor: '#6366f120' }}>
+                  <svg className="w-8 h-8" style={{ color: '#6366f1' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z" />
+                  </svg>
+                </div>
+                <p className="text-lg font-medium" style={{ color: '#0f172a' }}>Escalate to Support</p>
+                <p className="text-gray-500 mt-2">We've completed all automated checks</p>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-5 mb-6">
+                <p className="text-sm text-blue-700">
+                  Our support team will review coverage and network conditions in your area. They will contact you with findings and any available solutions.
+                </p>
+              </div>
+
+              <button
+                onClick={async () => {
+                  if (slowSpeedSessionId) {
+                    await updateSlowSpeedSession(slowSpeedSessionId, { 
+                      escalated: true,
+                      sessionState: 'escalated'
+                    });
+                  }
+                  await createEscalation();
+                }}
+                disabled={isSubmitting}
+                className="w-full px-6 py-3 rounded-lg text-white font-medium transition-all hover:shadow-lg disabled:opacity-50 mb-3"
+                style={{ backgroundColor: '#6366f1' }}
+              >
+                {isSubmitting ? 'Submitting...' : 'Submit Support Request'}
+              </button>
+
+              <button
+                onClick={() => setStep('speed_outdoor_result')}
+                className="w-full px-4 py-3 rounded-lg font-medium transition-all border border-gray-300 hover:bg-gray-50"
+                style={{ color: '#0f172a' }}
+              >
+                Back
+              </button>
             </motion.div>
           )}
 
