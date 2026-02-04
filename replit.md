@@ -38,10 +38,20 @@ The design adheres to official Nomad Internet branding, featuring a modern SaaS 
 - **`app.lrlos.com`**: External webhook for sending OTPs and activation requests.
 
 ## Recent Changes
+- Feb 4, 2026: Comprehensive Slow Speed Troubleshooting
+  - New guided troubleshooting flow for wireless device slow speeds
+  - Qualification questions: When did issue start? Has modem been moved?
+  - Controlled line refresh sequence (suspend → 2min → resume → 2min → power cycle)
+  - Device & Environment testing guidance with outdoor signal test
+  - Database table `slow_speed_sessions` tracks sessions, cooldowns, and results
+  - 7-day cooldown between line refreshes, 2-hour sync period after refresh
+  - Outdoor test result interpretation: placement vs network capacity
+  - Integration with escalation system for unresolved issues
+  - API endpoints: POST /api/slow-speed/check-eligibility, start-session, update-session, start-refresh, complete-refresh, GET /api/slow-speed/session/:sessionId
 - Feb 3, 2026: Active Line Issue Selection
   - When line is active in troubleshooting, customer selects issue type:
     - "Internet is not working at all" - Shows reboot instructions and support contact
-    - "Speed issues" - Shows tips to improve speed and support contact
+    - "Speed issues" - Now launches comprehensive slow speed troubleshooting flow
 - Feb 3, 2026: Device Help Options in Internet Tab
   - "Device Help" dropdown button next to Troubleshoot button (paid services only)
   - Options: Device not powering on, WiFi name not on list, Unable to connect TV, Need replacement power cord, Change WiFi password

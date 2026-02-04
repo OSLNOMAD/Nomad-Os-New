@@ -531,6 +531,7 @@ export default function Troubleshoot() {
   }, []);
 
   const startSlowSpeedResumeTimer = useCallback(async () => {
+    clearTimer();
     await resumeLine();
     setStep('speed_refresh_resume');
     setTimeRemaining(120);
@@ -552,6 +553,7 @@ export default function Troubleshoot() {
   }, [startSlowSpeedResumeTimer]);
 
   const startSlowSpeedSuspendTimer = useCallback(() => {
+    clearTimer();
     setStep('speed_refresh_suspend');
     setTimeRemaining(120);
     
