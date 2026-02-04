@@ -38,6 +38,16 @@ The design adheres to official Nomad Internet branding, featuring a modern SaaS 
 - **`app.lrlos.com`**: External webhook for sending OTPs and activation requests.
 
 ## Recent Changes
+- Feb 4, 2026: Cancellation & Retention Flow
+  - Multi-step cancellation modal with reason selection (too expensive, slow speeds, not reliable, no longer needed, moving, other)
+  - Intelligent flows based on reason: price negotiation for "too expensive", troubleshooting offer for speed/reliability issues
+  - Retention offers: 20% off for 2 months or $20 off for 1 month based on target price
+  - Contact preference collection (email or phone with callback time)
+  - Zendesk ticket creation assigned to "Retention & Cancellations" group (ID: 41909825396372)
+  - Slack notification posting with customer details, reason, and ticket ID
+  - Database tables: `cancellation_requests` for tracking flow state, `portal_settings` for configuration
+  - Admin Dashboard settings tab for updating Slack Channel ID
+  - API endpoints: /api/cancellation/* for flow management, /api/admin/settings for portal configuration
 - Feb 4, 2026: Customer Feedback Display & Activation Message
   - Customers can now view their submitted feedback and admin responses in the Overview tab
   - Added GET /api/feedback endpoint for customers to fetch their own feedback

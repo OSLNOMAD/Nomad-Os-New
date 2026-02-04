@@ -15,6 +15,15 @@ interface Feedback {
   createdAt: string
 }
 
+interface PortalSetting {
+  id: number
+  key: string
+  value: string
+  description: string | null
+  updatedAt: string
+  updatedBy: string | null
+}
+
 export default function AdminDashboard() {
   const [feedback, setFeedback] = useState<Feedback[]>([])
   const [loading, setLoading] = useState(true)
@@ -23,6 +32,12 @@ export default function AdminDashboard() {
   const [responseText, setResponseText] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [filter, setFilter] = useState<'all' | 'pending' | 'responded'>('all')
+  const [activeTab, setActiveTab] = useState<'feedback' | 'settings'>('feedback')
+  const [settings, setSettings] = useState<PortalSetting[]>([])
+  const [settingsLoading, setSettingsLoading] = useState(false)
+  const [slackChannelId, setSlackChannelId] = useState('')
+  const [savingSettings, setSavingSettings] = useState(false)
+  const [settingsSuccess, setSettingsSuccess] = useState('')
   const navigate = useNavigate()
 
   const adminUser = JSON.parse(localStorage.getItem('admin_user') || '{}')
@@ -35,6 +50,12 @@ export default function AdminDashboard() {
     }
     fetchFeedback()
   }, [navigate])
+
+  useEffect(() => {
+    if (activeTab === 'settings') {
+      fetchSettings()
+    }
+  }, [activeTab])
 
   const fetchFeedback = async () => {
     try {
@@ -95,6 +116,63 @@ export default function AdminDashboard() {
     navigate('/admin')
   }
 
+  const fetchSettings = async () => {
+    setSettingsLoading(true)
+    try {
+      const token = localStorage.getItem('admin_token')
+      const response = await fetch('/api/admin/settings', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setSettings(data.settings || [])
+        const slackSetting = data.settings?.find((s: PortalSetting) => s.key === 'slack_channel_id')
+        if (slackSetting) {
+          setSlackChannelId(slackSetting.value)
+        }
+      }
+    } catch (err) {
+      setError('Failed to load settings')
+    } finally {
+      setSettingsLoading(false)
+    }
+  }
+
+  const handleSaveSlackChannel = async () => {
+    if (!slackChannelId.trim()) {
+      setError('Slack Channel ID is required')
+      return
+    }
+    setSavingSettings(true)
+    setError('')
+    setSettingsSuccess('')
+    try {
+      const token = localStorage.getItem('admin_token')
+      const response = await fetch('/api/admin/settings', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          key: 'slack_channel_id',
+          value: slackChannelId.trim()
+        })
+      })
+      if (response.ok) {
+        setSettingsSuccess('Slack Channel ID updated successfully!')
+        await fetchSettings()
+      } else {
+        const data = await response.json()
+        setError(data.error || 'Failed to update setting')
+      }
+    } catch (err) {
+      setError('Failed to update setting')
+    } finally {
+      setSavingSettings(false)
+    }
+  }
+
   const filteredFeedback = feedback.filter(f => {
     if (filter === 'pending') return f.status === 'pending' || !f.status
     if (filter === 'responded') return f.status === 'responded'
@@ -149,6 +227,31 @@ export default function AdminDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="mb-6 flex gap-2 border-b border-gray-200">
+          <button
+            onClick={() => setActiveTab('feedback')}
+            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'feedback'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
+            style={activeTab === 'feedback' ? { borderColor: '#10a37f', color: '#10a37f' } : {}}
+          >
+            Customer Feedback
+          </button>
+          <button
+            onClick={() => setActiveTab('settings')}
+            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'settings'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
+            style={activeTab === 'settings' ? { borderColor: '#10a37f', color: '#10a37f' } : {}}
+          >
+            Settings
+          </button>
+        </div>
+
         {error && (
           <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
             {error}
@@ -156,6 +259,15 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {settingsSuccess && (
+          <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4 text-green-700">
+            {settingsSuccess}
+            <button onClick={() => setSettingsSuccess('')} className="ml-2 underline">Dismiss</button>
+          </div>
+        )}
+
+        {activeTab === 'feedback' && (
+          <>
         <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h2 className="text-2xl font-bold text-gray-900">Customer Feedback</h2>
@@ -255,6 +367,87 @@ export default function AdminDashboard() {
             ))
           )}
         </div>
+          </>
+        )}
+
+        {activeTab === 'settings' && (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">Portal Settings</h2>
+              <p className="text-gray-600">Configure portal integrations and preferences</p>
+            </div>
+
+            {settingsLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2" style={{ borderColor: '#10a37f' }}></div>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div className="bg-white rounded-lg border border-gray-200 p-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Slack Integration</h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Configure the Slack channel where cancellation notifications will be sent.
+                  </p>
+                  
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Slack Channel ID
+                      </label>
+                      <input
+                        type="text"
+                        value={slackChannelId}
+                        onChange={(e) => setSlackChannelId(e.target.value)}
+                        placeholder="e.g., C01234567AB or D09CQ87C6UU"
+                        className="w-full max-w-md px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        You can find the channel ID by right-clicking on a channel in Slack and selecting "Copy link"
+                      </p>
+                    </div>
+                    
+                    <button
+                      onClick={handleSaveSlackChannel}
+                      disabled={savingSettings}
+                      className="px-6 py-2 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50"
+                      style={{ background: 'linear-gradient(135deg, #10a37f 0%, #0d8a6a 100%)' }}
+                    >
+                      {savingSettings ? 'Saving...' : 'Save Channel ID'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg border border-gray-200 p-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">All Settings</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-200">
+                          <th className="text-left py-2 px-3 font-medium text-gray-700">Key</th>
+                          <th className="text-left py-2 px-3 font-medium text-gray-700">Value</th>
+                          <th className="text-left py-2 px-3 font-medium text-gray-700">Description</th>
+                          <th className="text-left py-2 px-3 font-medium text-gray-700">Last Updated</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {settings.map((setting) => (
+                          <tr key={setting.id} className="border-b border-gray-100">
+                            <td className="py-2 px-3 font-mono text-xs">{setting.key}</td>
+                            <td className="py-2 px-3 font-mono text-xs">{setting.value}</td>
+                            <td className="py-2 px-3 text-gray-600">{setting.description || '-'}</td>
+                            <td className="py-2 px-3 text-gray-500">
+                              {new Date(setting.updatedAt).toLocaleString()}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </main>
 
       <AnimatePresence>
