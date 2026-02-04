@@ -3040,6 +3040,22 @@ if (process.env.NODE_ENV === "production") {
   });
 }
 
-app.listen(PORT, "0.0.0.0", () => {
+async function seedPortalSettings() {
+  const defaultSettings = [
+    { key: 'slack_channel_id', value: 'C09DACN82VD', description: 'Slack channel for cancellation notifications' },
+    { key: 'zendesk_cancellation_group_id', value: '41909825396372', description: 'Zendesk Retention & Cancellations group ID' }
+  ];
+
+  for (const setting of defaultSettings) {
+    const existing = await storage.getPortalSetting(setting.key);
+    if (!existing) {
+      await storage.updatePortalSetting(setting.key, setting.value, 'system');
+      console.log(`Seeded portal setting: ${setting.key}`);
+    }
+  }
+}
+
+app.listen(PORT, "0.0.0.0", async () => {
   console.log(`Server running on port ${PORT}`);
+  await seedPortalSettings();
 });
