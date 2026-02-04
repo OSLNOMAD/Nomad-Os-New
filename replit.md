@@ -38,6 +38,16 @@ The design adheres to official Nomad Internet branding, featuring a modern SaaS 
 - **`app.lrlos.com`**: External webhook for sending OTPs and activation requests.
 
 ## Recent Changes
+- Feb 4, 2026: Admin Dashboard for Feedback Management
+  - New /admin login page for admin users (dark theme, gradient design)
+  - Admin dashboard at /admin/dashboard to manage customer feedback
+  - View all feedback submissions with filters: All, Pending, Reviewed
+  - Respond to feedback with notes, status updates
+  - Database: `admin_users` table for admin authentication
+  - Extended `customer_feedback` with adminResponse, respondedAt, respondedBy, status fields
+  - JWT-based admin authentication with secure password hashing
+  - Admin access: bryan@nomadinternet.com (requires seed in development)
+  - Seed endpoint protected: development-only with adminSecret required
 - Feb 4, 2026: Comprehensive Slow Speed Troubleshooting
   - New guided troubleshooting flow for wireless device slow speeds
   - Qualification questions: When did issue start? Has modem been moved?
