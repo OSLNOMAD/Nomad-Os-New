@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { ChatWidget } from '../components/ChatWidget'
 import { FeedbackButton } from '../components/FeedbackButton'
+import { CancellationModal } from '../components/CancellationModal'
 import { getPlanDisplayName } from '../utils/planNames'
 
 interface Customer {
@@ -175,6 +176,8 @@ export default function Dashboard() {
   const [deviceHelpOpen, setDeviceHelpOpen] = useState<string | null>(null)
   const [showComingSoon, setShowComingSoon] = useState(false)
   const [customerFeedback, setCustomerFeedback] = useState<CustomerFeedback[]>([])
+  const [cancellationModalOpen, setCancellationModalOpen] = useState(false)
+  const [subscriptionToCancel, setSubscriptionToCancel] = useState<ChargebeeSubscription | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const deviceHelpRef = useRef<HTMLDivElement>(null)
 
@@ -815,6 +818,17 @@ void collectibleInvoices.length
                               >
                                 {paymentLoading === 'update' ? 'Loading...' : 'Update Payment Method'}
                               </button>
+                              {(sub.status === 'active' || sub.status === 'paused' || sub.status === 'in_trial') && (
+                                <button
+                                  onClick={() => {
+                                    setSubscriptionToCancel(sub)
+                                    setCancellationModalOpen(true)
+                                  }}
+                                  className="px-4 py-2 text-sm font-medium text-red-600 border border-red-300 rounded-lg hover:bg-red-50 transition-colors"
+                                >
+                                  Cancel Subscription
+                                </button>
+                              )}
                             </div>
                             
                                                       </div>
@@ -1504,6 +1518,18 @@ void collectibleInvoices.length
       
       {authToken && <ChatWidget token={authToken} dataLoaded={!isLoadingData} />}
       {authToken && <FeedbackButton token={authToken} />}
+      
+      {authToken && subscriptionToCancel && (
+        <CancellationModal
+          isOpen={cancellationModalOpen}
+          onClose={() => {
+            setCancellationModalOpen(false)
+            setSubscriptionToCancel(null)
+          }}
+          subscription={subscriptionToCancel}
+          token={authToken}
+        />
+      )}
 
       {showComingSoon && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
