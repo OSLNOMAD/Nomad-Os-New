@@ -97,6 +97,7 @@ export const cancellationRequests = pgTable("cancellation_requests", {
   targetPrice: integer("target_price"),
   retentionOfferShown: varchar("retention_offer_shown", { length: 255 }),
   retentionOfferAccepted: boolean("retention_offer_accepted"),
+  discountEligible: boolean("discount_eligible"),
   discountAppliedAt: timestamp("discount_applied_at"),
   troubleshootingOffered: boolean("troubleshooting_offered"),
   troubleshootingAccepted: boolean("troubleshooting_accepted"),

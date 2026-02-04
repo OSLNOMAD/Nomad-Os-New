@@ -2323,6 +2323,7 @@ app.post("/api/cancellation/submit-reason", async (req, res) => {
     await storage.updateCancellationRequest(requestId, {
       cancellationReason: reason,
       reasonDetails,
+      discountEligible,
       flowStep: nextStep
     });
 
@@ -2601,7 +2602,7 @@ app.post("/api/cancellation/submit-contact", async (req, res) => {
           ? "✅ DISCOUNT ACCEPTED - Customer accepted the retention offer and will continue service"
           : request.retentionOfferAccepted === false 
             ? "❌ DISCOUNT DECLINED - Customer rejected the retention offer"
-            : request.discountAppliedAt 
+            : request.discountEligible === false 
               ? "⚠️ NOT ELIGIBLE - Customer received a discount within the last 2 months"
               : "N/A - No retention offer presented";
 
