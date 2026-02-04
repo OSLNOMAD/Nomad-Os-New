@@ -2177,13 +2177,16 @@ app.post("/api/admin/feedback/:id/respond", async (req, res) => {
 
 app.post("/api/admin/seed", async (req, res) => {
   try {
-    if (process.env.NODE_ENV === "production") {
-      return res.status(403).json({ error: "Not available in production" });
-    }
-
     const { email, password, name, adminSecret } = req.body;
     
-    if (adminSecret !== process.env.ADMIN_SEED_SECRET && adminSecret !== "dev-seed-only") {
+    const validSecret = process.env.ADMIN_SEED_SECRET;
+    const isProduction = process.env.NODE_ENV === "production";
+    
+    if (isProduction && (!validSecret || adminSecret !== validSecret)) {
+      return res.status(403).json({ error: "Invalid admin secret" });
+    }
+    
+    if (!isProduction && adminSecret !== "dev-seed-only" && adminSecret !== validSecret) {
       return res.status(403).json({ error: "Invalid admin secret" });
     }
 
