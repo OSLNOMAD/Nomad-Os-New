@@ -1083,6 +1083,64 @@ app.get("/api/billing/invoice/:invoiceId/pdf", async (req, res) => {
   }
 });
 
+app.post("/api/device/suspend", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const token = authHeader.split(" ")[1];
+    let customerEmail: string | null = null;
+    let isTestToken = false;
+
+    try {
+      const decoded: any = jwt.verify(token, JWT_SECRET!);
+      if (decoded.isTest) {
+        isTestToken = true;
+        customerEmail = decoded.email;
+      }
+    } catch (e) {}
+
+    if (!isTestToken) {
+      const session = await storage.getSessionByToken(token);
+      if (!session) {
+        return res.status(401).json({ error: "Invalid session" });
+      }
+      const customer = await storage.getCustomer(session.customerId);
+      if (!customer) {
+        return res.status(404).json({ error: "Customer not found" });
+      }
+      customerEmail = customer.email;
+    }
+
+    if (!customerEmail) {
+      return res.status(401).json({ error: "Could not determine customer" });
+    }
+
+    const { identifier, identifierType = 'iccid' } = req.body;
+    if (!identifier) {
+      return res.status(400).json({ error: "Device identifier is required" });
+    }
+
+    const { suspendDevice } = await import('./services');
+    const result = await suspendDevice(identifier, identifierType);
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error || "Failed to suspend device" });
+    }
+
+    res.json({ 
+      success: true, 
+      message: "Device suspend request submitted",
+      requestId: result.requestId 
+    });
+  } catch (error: any) {
+    console.error("Suspend device error:", error);
+    res.status(500).json({ error: error.message || "Failed to suspend device" });
+  }
+});
+
 app.post("/api/device/resume", async (req, res) => {
   try {
     const authHeader = req.headers.authorization;

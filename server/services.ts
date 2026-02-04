@@ -1244,6 +1244,58 @@ export interface ResumeDeviceResult {
   deviceState?: string;
 }
 
+export async function suspendDevice(identifier: string, identifierType: 'iccid' | 'imei' | 'mdn' = 'iccid'): Promise<ResumeDeviceResult> {
+  if (!THINGSPACE_ACCOUNT_NAME) {
+    return { success: false, error: 'ThingSpace account not configured' };
+  }
+  
+  const tokens = await getThingspaceTokens();
+  if (!tokens) {
+    return { success: false, error: 'Failed to authenticate with ThingSpace' };
+  }
+  
+  try {
+    const response = await fetch('https://thingspace.verizon.com/api/m2m/v1/devices/actions/suspend', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${tokens.oauth}`,
+        'VZ-M2M-Token': tokens.session,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        accountName: THINGSPACE_ACCOUNT_NAME,
+        devices: [
+          {
+            deviceIds: [
+              {
+                id: identifier,
+                kind: identifierType
+              }
+            ]
+          }
+        ]
+      })
+    });
+    
+    const responseText = await response.text();
+    console.log('ThingSpace suspend response:', response.status, responseText);
+    
+    if (!response.ok) {
+      return { success: false, error: `ThingSpace API error: ${response.status}` };
+    }
+    
+    const data = JSON.parse(responseText);
+    return { 
+      success: true, 
+      requestId: data.requestId,
+      deviceState: 'suspend_pending'
+    };
+  } catch (error: any) {
+    console.error('Error suspending device:', error);
+    return { success: false, error: error.message || 'Failed to suspend device' };
+  }
+}
+
 export async function resumeDevice(identifier: string, identifierType: 'iccid' | 'imei' | 'mdn' = 'iccid'): Promise<ResumeDeviceResult> {
   if (!THINGSPACE_ACCOUNT_NAME) {
     return { success: false, error: 'ThingSpace account not configured' };
