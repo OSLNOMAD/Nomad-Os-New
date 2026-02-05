@@ -2405,7 +2405,7 @@ app.post("/api/plan-change-request", async (req, res) => {
     // Send Slack notification for manual processing
     const slackToken = process.env.SLACK_BOT_TOKEN;
     if (slackToken) {
-      const targetChannel = "C09DACN82VD";
+      const targetChannel = "U05HMJ0JG79";
       const priceDiff = ((requestedPrice || 0) / 100) - (currentPrice || 0);
       const priceChangeText = priceDiff > 0 
         ? `Upgrade (+$${priceDiff.toFixed(2)}/mo)` 
