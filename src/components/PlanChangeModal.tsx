@@ -13,7 +13,7 @@ interface Plan {
 
 const availablePlans: Plan[] = [
   {
-    id: 'Nomad-Unlimited-Residential-Plan-01-USD-Monthly',
+    id: 'Nomad-Unlimited-Residential-Plan',
     name: 'Nomad Unlimited Residential',
     price: 99.95,
     description: 'Best for full-time home or fixed-location use',
@@ -27,7 +27,7 @@ const availablePlans: Plan[] = [
     speedMbps: 100
   },
   {
-    id: 'Nomad-Unlimited-Travel-Plan-01-USD-Monthly',
+    id: 'Nomad-Unlimited-Travel-Plan',
     name: 'Nomad Unlimited Travel',
     price: 129.95,
     description: 'Best for RV, travel, or changing locations',
