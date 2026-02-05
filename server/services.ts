@@ -1483,9 +1483,8 @@ export async function scheduleSubscriptionPlanChange(
     const credentials = Buffer.from(`${CHARGEBEE_API_KEY}:`).toString('base64');
     const formData = new URLSearchParams();
     
-    // Product Catalog 2.0: Use subscription_items with item_price_id and item_type
+    // Product Catalog 2.0: Use subscription_items instead of plan_id
     formData.append('subscription_items[item_price_id][0]', newPlanId);
-    formData.append('subscription_items[item_type][0]', 'plan');
     formData.append('subscription_items[quantity][0]', '1');
     formData.append('replace_items_list', 'true');
     formData.append('end_of_term', 'true');
