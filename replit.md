@@ -38,21 +38,13 @@ The design adheres to official Nomad Internet branding, featuring a modern SaaS 
 - **`app.lrlos.com`**: External webhook for sending OTPs and activation requests.
 
 ## Recent Changes
-- Feb 5, 2026: Automated Plan Change with ThingSpace Integration
-  - Full automation: Chargebee billing update + ThingSpace network speed change
-  - Chargebee subscription update with end_of_term=true (billing changes at next cycle)
-  - Chargebee customer profile comment documenting the change (who, what, when)
-  - ThingSpace API integration for immediate network speed change (when MDN available)
-  - Plan mapping: Residential → 100 Mbps (59142x48526x84777), Travel → 200 Mbps (59145x48526x84777)
-  - 5-minute verification: checks ThingSpace device status to confirm plan changed
-  - Live countdown timer on portal while verifying plan change
-  - Slack notifications on ThingSpace failure or verification mismatch
+- Feb 5, 2026: Plan Change Request Feature (Slack Notification Only)
   - "Change Plan" button visible for subscriptions with device info (ICCID, IMEI, or MDN)
-  - No MDN handling: Chargebee billing updated, Slack notification sent for manual network update
-  - Database table: `plan_change_verifications` tracks full change lifecycle
-  - API endpoints: POST /api/plan-change-request, GET /api/plan-change-status/:id
-- Feb 4, 2026: Plan Change Request Feature (superseded by Feb 5 automation)
-  - Original Slack-only notification approach replaced with full automation
+  - Submitting request sends Slack notification to channel C09DACN82VD with request details
+  - Customer sees "Request Submitted" confirmation with 24-hour processing message
+  - Manual processing by team - no automated Chargebee or ThingSpace changes
+  - API endpoint: POST /api/plan-change-request
+  - Database table `plan_change_verifications` exists but is currently unused
 - Feb 4, 2026: Cancellation & Retention Flow
   - Multi-step cancellation modal with reason selection (too expensive, slow speeds, not reliable, no longer needed, moving, other)
   - Intelligent flows based on reason: price negotiation for "too expensive", troubleshooting offer for speed/reliability issues (active subscriptions only)
