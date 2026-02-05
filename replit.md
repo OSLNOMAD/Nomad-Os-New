@@ -38,6 +38,14 @@ The design adheres to official Nomad Internet branding, featuring a modern SaaS 
 - **`app.lrlos.com`**: External webhook for sending OTPs and activation requests.
 
 ## Recent Changes
+- Feb 5, 2026: Admin Cancellation Request Logging & Export
+  - New "Cancellation Requests" tab in Admin Dashboard (/admin/dashboard)
+  - View all cancellation requests with customer email, subscription ID, MRR, reason, discount status
+  - Filter by status: All, Started, Submitted, Completed
+  - Export to CSV with proper escaping for all fields
+  - Table displays: date, customer, subscription, MRR ($), reason, discount acceptance, status, Zendesk ticket link
+  - API endpoints: GET /api/admin/cancellations, GET /api/admin/cancellations/export
+  - Uses existing `cancellation_requests` table data
 - Feb 5, 2026: Plan Change Feature (Chargebee Auto-Update + Slack ThingSpace Notification)
   - "Change Plan" button visible for subscriptions with device info (ICCID, IMEI, or MDN)
   - Only shows the opposite speed tier (100 Mbps ↔ 200 Mbps)
