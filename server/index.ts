@@ -2217,11 +2217,12 @@ const THINGSPACE_PLAN_CODES = {
 
 const pendingVerifications: Map<number, NodeJS.Timeout> = new Map();
 
-async function sendPlanChangeSlackAlert(type: 'failure' | 'verification_failed', data: {
+async function sendPlanChangeSlackAlert(type: 'failure' | 'verification_failed' | 'manual_required', data: {
   customerEmail: string;
   customerName?: string;
   subscriptionId: string;
   mdn?: string;
+  iccid?: string;
   currentPlan: string;
   requestedPlan: string;
   expectedPlanCode?: string;
@@ -2232,10 +2233,12 @@ async function sendPlanChangeSlackAlert(type: 'failure' | 'verification_failed',
   if (!slackToken) return;
 
   const targetChannel = "C09DACN82VD";
-  const emoji = type === 'failure' ? ':warning:' : ':x:';
-  const title = type === 'failure' 
-    ? 'Manual ThingSpace Update Required' 
-    : 'ThingSpace Plan Change Verification Failed';
+  const emoji = type === 'verification_failed' ? ':x:' : ':warning:';
+  const title = type === 'verification_failed' 
+    ? 'ThingSpace Plan Change Verification Failed'
+    : type === 'manual_required'
+    ? 'Manual Network Update Required (No MDN)'
+    : 'Manual ThingSpace Update Required';
 
   const blocks: any[] = [
     {
@@ -2248,7 +2251,7 @@ async function sendPlanChangeSlackAlert(type: 'failure' | 'verification_failed',
         { type: "mrkdwn", text: `*Customer:*\n${data.customerName || data.customerEmail}` },
         { type: "mrkdwn", text: `*Email:*\n${data.customerEmail}` },
         { type: "mrkdwn", text: `*Subscription:*\n${data.subscriptionId}` },
-        { type: "mrkdwn", text: `*MDN:*\n${data.mdn || 'N/A'}` }
+        { type: "mrkdwn", text: data.mdn && data.mdn !== 'N/A' ? `*MDN:*\n${data.mdn}` : `*ICCID:*\n${data.iccid || 'N/A'}` }
       ]
     },
     {
@@ -2402,10 +2405,6 @@ app.post("/api/plan-change-request", async (req, res) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    if (!mdn) {
-      return res.status(400).json({ error: "Plan changes require a device with MDN" });
-    }
-
     const thingspacePlanCode = THINGSPACE_PLAN_CODES[requestedPlanId as keyof typeof THINGSPACE_PLAN_CODES];
     if (!thingspacePlanCode) {
       return res.status(400).json({ error: "Invalid plan selected" });
@@ -2416,8 +2415,8 @@ app.post("/api/plan-change-request", async (req, res) => {
       customerEmail,
       subscriptionId,
       chargebeeCustomerId,
-      mdn,
-      iccid,
+      mdn: mdn || null,
+      iccid: iccid || null,
       currentPlanId,
       currentPlanName,
       currentPrice,
@@ -2454,6 +2453,38 @@ app.post("/api/plan-change-request", async (req, res) => {
 - ThingSpace Plan Code: ${thingspacePlanCode}`;
 
       await addChargebeeCustomerComment(chargebeeCustomerId, commentText);
+    }
+
+    // If no MDN, skip ThingSpace and notify team for manual update
+    if (!mdn) {
+      await storage.updatePlanChangeVerification(verification.id, {
+        thingspaceRequested: false,
+        verificationError: 'No MDN available - manual network change required',
+        slackNotificationSent: true,
+        status: 'completed',
+        verificationStatus: 'skipped'
+      });
+
+      await sendPlanChangeSlackAlert('manual_required', {
+        customerEmail,
+        customerName,
+        subscriptionId,
+        mdn: 'N/A',
+        iccid: iccid || 'N/A',
+        currentPlan: currentPlanName || currentPlanId,
+        requestedPlan: requestedPlanName || requestedPlanId,
+        error: 'No MDN on subscription - manual ThingSpace update required'
+      });
+
+      console.log(`Plan change billing updated for ${customerEmail} (no MDN - manual network change needed)`);
+
+      return res.json({
+        success: true,
+        verificationId: verification.id,
+        message: "Billing updated successfully. Our team will update your network speed shortly.",
+        nextBillingDate: chargebeeResult.nextBillingDate,
+        thingspaceStatus: 'manual_required'
+      });
     }
 
     const currentThingspacePlanCode = THINGSPACE_PLAN_CODES[currentPlanId as keyof typeof THINGSPACE_PLAN_CODES] || '';

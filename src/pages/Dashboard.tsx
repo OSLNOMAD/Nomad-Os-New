@@ -850,7 +850,7 @@ void collectibleInvoices.length
                               </button>
                               {(sub.status === 'active' || sub.status === 'paused' || sub.status === 'in_trial') && (
                                 <>
-                                  {sub.mdn && (
+                                  {(sub.mdn || sub.iccid || sub.imei) && (
                                     <button
                                       onClick={() => {
                                         setSubscriptionForPlanChange({
