@@ -71,7 +71,19 @@ export function PlanChangeModal({ isOpen, onClose, subscription, customerEmail, 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const filteredPlans = availablePlans.filter(plan => plan.id !== subscription.planId)
+  // Look up current plan speed from availablePlans array
+  const currentPlan = availablePlans.find(plan => plan.id === subscription.planId)
+  const currentPlanSpeed = currentPlan?.speedMbps ?? null
+  
+  const filteredPlans = availablePlans.filter(plan => {
+    // Don't show the current plan
+    if (plan.id === subscription.planId) return false
+    // Only show the opposite speed tier
+    if (currentPlanSpeed === 100) return plan.speedMbps === 200
+    if (currentPlanSpeed === 200) return plan.speedMbps === 100
+    // If current plan not found in our list, show all other plans
+    return true
+  })
 
   useEffect(() => {
     return () => {
