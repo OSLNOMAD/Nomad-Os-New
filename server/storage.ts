@@ -46,6 +46,7 @@ export interface IStorage {
   updateCancellationRequest(id: number, data: Partial<InsertCancellationRequest>): Promise<CancellationRequest | undefined>;
   getCancellationRequestsByCustomer(customerEmail: string): Promise<CancellationRequest[]>;
   checkRecentDiscountForSubscription(subscriptionId: string): Promise<boolean>;
+  getAllCancellationRequests(): Promise<CancellationRequest[]>;
   
   createPlanChangeVerification(verification: InsertPlanChangeVerification): Promise<PlanChangeVerification>;
   getPlanChangeVerification(id: number): Promise<PlanChangeVerification | undefined>;
@@ -347,6 +348,10 @@ export class DatabaseStorage implements IStorage {
       .limit(1);
     
     return recentDiscount.length > 0;
+  }
+
+  async getAllCancellationRequests(): Promise<CancellationRequest[]> {
+    return await db.select().from(cancellationRequests).orderBy(desc(cancellationRequests.createdAt));
   }
   
   async createPlanChangeVerification(verification: InsertPlanChangeVerification): Promise<PlanChangeVerification> {

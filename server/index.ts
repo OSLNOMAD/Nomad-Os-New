@@ -3319,6 +3319,115 @@ app.post("/api/admin/settings", async (req, res) => {
   }
 });
 
+// Admin Cancellation Requests endpoints
+app.get("/api/admin/cancellations", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "No authorization token provided" });
+    }
+
+    const token = authHeader.split(" ")[1];
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      if (!decoded.isAdmin) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+    } catch {
+      return res.status(401).json({ error: "Invalid token" });
+    }
+
+    const cancellations = await storage.getAllCancellationRequests();
+    res.json({ cancellations });
+  } catch (error: any) {
+    console.error("Get cancellations error:", error);
+    res.status(500).json({ error: error.message || "Failed to get cancellations" });
+  }
+});
+
+app.get("/api/admin/cancellations/export", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "No authorization token provided" });
+    }
+
+    const token = authHeader.split(" ")[1];
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      if (!decoded.isAdmin) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+    } catch {
+      return res.status(401).json({ error: "Invalid token" });
+    }
+
+    const cancellations = await storage.getAllCancellationRequests();
+    
+    // Build CSV
+    const headers = [
+      "ID",
+      "Date",
+      "Customer Email",
+      "Subscription ID",
+      "Status",
+      "MRR ($)",
+      "Cancellation Reason",
+      "Reason Details",
+      "Discount Offered",
+      "Discount Accepted",
+      "Discount Eligible",
+      "Troubleshooting Offered",
+      "Troubleshooting Accepted",
+      "Contact Method",
+      "Phone",
+      "Preferred Call Time",
+      "Zendesk Ticket ID",
+      "Additional Notes"
+    ];
+    
+    // Helper to escape CSV values (handle quotes, newlines, commas)
+    const escapeCSV = (val: string | number | null | undefined): string => {
+      if (val === null || val === undefined) return "";
+      const str = String(val);
+      return str.replace(/"/g, '""').replace(/\r?\n/g, ' ');
+    };
+    
+    const rows = cancellations.map(c => [
+      c.id,
+      c.createdAt ? new Date(c.createdAt).toISOString() : "",
+      escapeCSV(c.customerEmail),
+      escapeCSV(c.subscriptionId),
+      escapeCSV(c.status || "started"),
+      c.currentPrice ? (c.currentPrice / 100).toFixed(2) : "",
+      escapeCSV(c.cancellationReason),
+      escapeCSV(c.reasonDetails),
+      escapeCSV(c.retentionOfferShown),
+      c.retentionOfferAccepted ? "Yes" : "No",
+      c.discountEligible ? "Yes" : "No",
+      c.troubleshootingOffered ? "Yes" : "No",
+      c.troubleshootingAccepted ? "Yes" : "No",
+      escapeCSV(c.preferredContactMethod),
+      escapeCSV(c.preferredPhone),
+      escapeCSV(c.preferredCallTime),
+      escapeCSV(c.zendeskTicketId),
+      escapeCSV(c.additionalNotes)
+    ]);
+    
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(","))
+    ].join("\n");
+    
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename=cancellation-requests-${new Date().toISOString().split('T')[0]}.csv`);
+    res.send(csvContent);
+  } catch (error: any) {
+    console.error("Export cancellations error:", error);
+    res.status(500).json({ error: error.message || "Failed to export cancellations" });
+  }
+});
+
 app.post("/api/admin/seed", async (req, res) => {
   try {
     const { email, password, name, adminSecret } = req.body;

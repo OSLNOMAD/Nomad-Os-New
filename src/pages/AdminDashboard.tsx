@@ -24,6 +24,27 @@ interface PortalSetting {
   updatedBy: string | null
 }
 
+interface CancellationRequest {
+  id: number
+  customerEmail: string
+  subscriptionId: string
+  subscriptionStatus: string | null
+  currentPrice: number | null
+  cancellationReason: string | null
+  reasonDetails: string | null
+  retentionOfferShown: string | null
+  retentionOfferAccepted: boolean | null
+  discountEligible: boolean | null
+  troubleshootingOffered: boolean | null
+  troubleshootingAccepted: boolean | null
+  preferredContactMethod: string | null
+  preferredPhone: string | null
+  preferredCallTime: string | null
+  zendeskTicketId: string | null
+  status: string | null
+  createdAt: string
+}
+
 export default function AdminDashboard() {
   const [feedback, setFeedback] = useState<Feedback[]>([])
   const [loading, setLoading] = useState(true)
@@ -32,12 +53,16 @@ export default function AdminDashboard() {
   const [responseText, setResponseText] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [filter, setFilter] = useState<'all' | 'pending' | 'responded'>('all')
-  const [activeTab, setActiveTab] = useState<'feedback' | 'settings'>('feedback')
+  const [activeTab, setActiveTab] = useState<'feedback' | 'cancellations' | 'settings'>('feedback')
   const [settings, setSettings] = useState<PortalSetting[]>([])
   const [settingsLoading, setSettingsLoading] = useState(false)
   const [slackChannelId, setSlackChannelId] = useState('')
   const [savingSettings, setSavingSettings] = useState(false)
   const [settingsSuccess, setSettingsSuccess] = useState('')
+  const [cancellations, setCancellations] = useState<CancellationRequest[]>([])
+  const [cancellationsLoading, setCancellationsLoading] = useState(false)
+  const [cancellationFilter, setCancellationFilter] = useState<'all' | 'started' | 'submitted' | 'completed'>('all')
+  const [exporting, setExporting] = useState(false)
   const navigate = useNavigate()
 
   const adminUser = JSON.parse(localStorage.getItem('admin_user') || '{}')
@@ -54,6 +79,8 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (activeTab === 'settings') {
       fetchSettings()
+    } else if (activeTab === 'cancellations') {
+      fetchCancellations()
     }
   }, [activeTab])
 
@@ -135,6 +162,67 @@ export default function AdminDashboard() {
       setError('Failed to load settings')
     } finally {
       setSettingsLoading(false)
+    }
+  }
+
+  const fetchCancellations = async () => {
+    setCancellationsLoading(true)
+    try {
+      const token = localStorage.getItem('admin_token')
+      const response = await fetch('/api/admin/cancellations', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+
+      if (response.status === 401 || response.status === 403) {
+        localStorage.removeItem('admin_token')
+        localStorage.removeItem('admin_user')
+        navigate('/admin')
+        return
+      }
+
+      if (response.ok) {
+        const data = await response.json()
+        setCancellations(data.cancellations || [])
+      }
+    } catch (err) {
+      setError('Failed to load cancellations')
+    } finally {
+      setCancellationsLoading(false)
+    }
+  }
+
+  const handleExportCancellations = async () => {
+    setExporting(true)
+    try {
+      const token = localStorage.getItem('admin_token')
+      const response = await fetch('/api/admin/cancellations/export', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+
+      if (response.status === 401 || response.status === 403) {
+        localStorage.removeItem('admin_token')
+        localStorage.removeItem('admin_user')
+        navigate('/admin')
+        return
+      }
+
+      if (response.ok) {
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `cancellation-requests-${new Date().toISOString().split('T')[0]}.csv`
+        document.body.appendChild(a)
+        a.click()
+        window.URL.revokeObjectURL(url)
+        a.remove()
+      } else {
+        setError('Failed to export cancellations')
+      }
+    } catch (err) {
+      setError('Failed to export cancellations')
+    } finally {
+      setExporting(false)
     }
   }
 
@@ -238,6 +326,17 @@ export default function AdminDashboard() {
             style={activeTab === 'feedback' ? { borderColor: '#10a37f', color: '#10a37f' } : {}}
           >
             Customer Feedback
+          </button>
+          <button
+            onClick={() => setActiveTab('cancellations')}
+            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'cancellations'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
+            style={activeTab === 'cancellations' ? { borderColor: '#10a37f', color: '#10a37f' } : {}}
+          >
+            Cancellation Requests
           </button>
           <button
             onClick={() => setActiveTab('settings')}
@@ -367,6 +466,148 @@ export default function AdminDashboard() {
             ))
           )}
         </div>
+          </>
+        )}
+
+        {activeTab === 'cancellations' && (
+          <>
+            <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">Cancellation Requests</h2>
+                <p className="text-gray-600">{cancellations.length} total requests</p>
+              </div>
+              
+              <div className="flex gap-2 flex-wrap">
+                {(['all', 'started', 'submitted', 'completed'] as const).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setCancellationFilter(f)}
+                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                      cancellationFilter === f
+                        ? 'text-white border-0'
+                        : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+                    }`}
+                    style={cancellationFilter === f ? { background: 'linear-gradient(135deg, #10a37f 0%, #0d8a6a 100%)' } : {}}
+                  >
+                    {f.charAt(0).toUpperCase() + f.slice(1)}
+                  </button>
+                ))}
+                <button
+                  onClick={handleExportCancellations}
+                  disabled={exporting}
+                  className="px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50"
+                  style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)' }}
+                >
+                  {exporting ? (
+                    <>
+                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Exporting...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      Export CSV
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {cancellationsLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2" style={{ borderColor: '#10a37f' }}></div>
+              </div>
+            ) : (
+              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-200">
+                        <th className="text-left py-3 px-4 font-medium text-gray-700">Date</th>
+                        <th className="text-left py-3 px-4 font-medium text-gray-700">Customer</th>
+                        <th className="text-left py-3 px-4 font-medium text-gray-700">Subscription</th>
+                        <th className="text-left py-3 px-4 font-medium text-gray-700">MRR</th>
+                        <th className="text-left py-3 px-4 font-medium text-gray-700">Reason</th>
+                        <th className="text-left py-3 px-4 font-medium text-gray-700">Discount</th>
+                        <th className="text-left py-3 px-4 font-medium text-gray-700">Status</th>
+                        <th className="text-left py-3 px-4 font-medium text-gray-700">Zendesk</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cancellations
+                        .filter(c => {
+                          if (cancellationFilter === 'all') return true
+                          const status = c.status || 'started'
+                          return status === cancellationFilter
+                        })
+                        .map((c) => (
+                          <tr key={c.id} className="border-b border-gray-100 hover:bg-gray-50">
+                            <td className="py-3 px-4 text-gray-600">
+                              {c.createdAt ? new Date(c.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}
+                            </td>
+                            <td className="py-3 px-4 font-medium text-gray-900">{c.customerEmail}</td>
+                            <td className="py-3 px-4 font-mono text-xs text-gray-600">{c.subscriptionId}</td>
+                            <td className="py-3 px-4 text-gray-900 font-medium">
+                              {c.currentPrice ? `$${(c.currentPrice / 100).toFixed(2)}` : '-'}
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700">
+                                {c.cancellationReason?.replace(/_/g, ' ') || '-'}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4">
+                              {c.retentionOfferAccepted ? (
+                                <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-700">Accepted</span>
+                              ) : c.retentionOfferShown ? (
+                                <span className="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-700">Declined</span>
+                              ) : c.discountEligible === false ? (
+                                <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-500">Not Eligible</span>
+                              ) : (
+                                <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-500">N/A</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                                c.status === 'completed' ? 'bg-blue-100 text-blue-700' :
+                                c.status === 'submitted' ? 'bg-green-100 text-green-700' :
+                                'bg-orange-100 text-orange-700'
+                              }`}>
+                                {c.status || 'started'}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4">
+                              {c.zendeskTicketId ? (
+                                <a
+                                  href={`https://nomadinternet.zendesk.com/agent/tickets/${c.zendeskTicketId}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 hover:text-blue-800 font-mono text-xs"
+                                >
+                                  #{c.zendeskTicketId}
+                                </a>
+                              ) : '-'}
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                  {cancellations.filter(c => {
+                    if (cancellationFilter === 'all') return true
+                    const status = c.status || 'started'
+                    return status === cancellationFilter
+                  }).length === 0 && (
+                    <div className="py-8 text-center text-gray-500">
+                      No cancellation requests found
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </>
         )}
 
