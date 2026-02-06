@@ -46,6 +46,14 @@ The design adheres to official Nomad Internet branding, featuring a modern SaaS 
   - Table displays: date, customer, subscription, MRR ($), reason, discount acceptance, status, Zendesk ticket link
   - API endpoints: GET /api/admin/cancellations, GET /api/admin/cancellations/export
   - Uses existing `cancellation_requests` table data
+- Feb 6, 2026: Credit Notes & Refunds Visibility
+  - Fetches credit notes from Chargebee API (`/credit_notes?customer_id`) alongside invoices and transactions
+  - New `ChargebeeCreditNote` interface with type, status, reason, amounts (total, allocated, refunded, available), line items
+  - Credit Notes & Refunds section in Invoices tab (only shows when credit notes exist)
+  - Mobile card view and desktop table view with color-coded status badges (refunded, refund_due, adjusted, voided) and type badges (refundable, adjustment, store)
+  - Shows linked reference invoice ID, reason code, and line item details
+  - PDF download for credit notes via `GET /api/billing/credit-note/:creditNoteId/pdf`
+  - Security: Validates credit note belongs to authenticated customer before generating PDF
 - Feb 6, 2026: Removed Plan Change Feature
   - Removed "Change Plan" button, PlanChangeModal component, and all related backend endpoints
   - Removed API endpoints: POST /api/plan-change-request, GET /api/plan-change-status, POST /api/device/change-plan

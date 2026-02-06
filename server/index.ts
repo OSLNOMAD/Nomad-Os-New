@@ -1117,6 +1117,62 @@ app.get("/api/billing/invoice/:invoiceId/pdf", async (req, res) => {
   }
 });
 
+app.get("/api/billing/credit-note/:creditNoteId/pdf", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const token = authHeader.split(" ")[1];
+    const session = await storage.getSessionByToken(token);
+    
+    let customerEmail: string | null = null;
+    
+    if (session) {
+      const customer = await storage.getCustomer(session.customerId);
+      if (customer) {
+        customerEmail = customer.email;
+      }
+    } else {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET) as any;
+        if (decoded.isTest) {
+          customerEmail = decoded.email || "test@example.com";
+        }
+      } catch {}
+    }
+
+    if (!customerEmail) {
+      return res.status(401).json({ error: "Invalid session" });
+    }
+
+    const { creditNoteId } = req.params;
+    if (!creditNoteId) {
+      return res.status(400).json({ error: "Credit Note ID is required" });
+    }
+
+    const { fetchChargebeeData, getCreditNotePdfUrl } = await import('./services');
+    const chargebeeData = await fetchChargebeeData(customerEmail);
+    
+    const allCreditNoteIds = chargebeeData.customers.flatMap(c => c.creditNotes.map(cn => cn.id));
+    if (!allCreditNoteIds.includes(creditNoteId)) {
+      return res.status(403).json({ error: "Credit note not found for this customer" });
+    }
+
+    const result = await getCreditNotePdfUrl(creditNoteId);
+
+    if (!result) {
+      return res.status(500).json({ error: "Failed to generate credit note PDF" });
+    }
+
+    res.json({ downloadUrl: result.url, validTill: result.validTill });
+  } catch (error: any) {
+    console.error("Credit Note PDF error:", error);
+    res.status(500).json({ error: error.message || "Failed to get credit note PDF" });
+  }
+});
+
 app.post("/api/device/suspend", async (req, res) => {
   try {
     const authHeader = req.headers.authorization;

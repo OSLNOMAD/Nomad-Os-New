@@ -139,10 +139,35 @@ export interface ChargebeeTransaction {
   }>;
 }
 
+export interface ChargebeeCreditNote {
+  id: string;
+  customerId: string;
+  subscriptionId: string | null;
+  referenceInvoiceId: string | null;
+  type: string;
+  reasonCode: string | null;
+  createReasonCode: string | null;
+  status: string;
+  date: string;
+  total: number;
+  subTotal: number;
+  amountAllocated: number;
+  amountRefunded: number;
+  amountAvailable: number;
+  currencyCode: string;
+  lineItems: Array<{
+    description: string;
+    amount: number;
+    quantity: number;
+    entityType: string;
+  }>;
+}
+
 export interface ChargebeeCustomerWithData extends ChargebeeCustomer {
   subscriptions: ChargebeeSubscription[];
   invoices: ChargebeeInvoice[];
   transactions: ChargebeeTransaction[];
+  creditNotes: ChargebeeCreditNote[];
   paymentSources: any[];
 }
 
@@ -571,6 +596,32 @@ function parseChargebeeInvoice(inv: any): ChargebeeInvoice {
   };
 }
 
+function parseChargebeeCreditNote(cn: any): ChargebeeCreditNote {
+  return {
+    id: cn.id,
+    customerId: cn.customer_id || '',
+    subscriptionId: cn.subscription_id || null,
+    referenceInvoiceId: cn.reference_invoice_id || null,
+    type: cn.type || '',
+    reasonCode: cn.reason_code || null,
+    createReasonCode: cn.create_reason_code || null,
+    status: cn.status || '',
+    date: cn.date ? new Date(cn.date * 1000).toISOString() : '',
+    total: (cn.total || 0) / 100,
+    subTotal: (cn.sub_total || 0) / 100,
+    amountAllocated: (cn.amount_allocated || 0) / 100,
+    amountRefunded: (cn.amount_refunded || 0) / 100,
+    amountAvailable: (cn.amount_available || 0) / 100,
+    currencyCode: cn.currency_code || 'USD',
+    lineItems: (cn.line_items || []).map((li: any) => ({
+      description: li.description || '',
+      amount: (li.amount || 0) / 100,
+      quantity: li.quantity || 1,
+      entityType: li.entity_type || ''
+    }))
+  };
+}
+
 function parseChargebeeTransaction(txn: any): ChargebeeTransaction {
   return {
     id: txn.id,
@@ -612,16 +663,18 @@ export async function fetchChargebeeData(email: string): Promise<ChargebeeData> 
       const c = item.customer;
       const customer = parseChargebeeCustomer(c);
       
-      const [subsData, invoicesData, txnData, paymentSourcesData] = await Promise.all([
+      const [subsData, invoicesData, txnData, creditNotesData, paymentSourcesData] = await Promise.all([
         chargebeeApiGet(`/subscriptions?customer_id[is]=${c.id}&limit=50`),
         chargebeeApiGet(`/invoices?customer_id[is]=${c.id}&limit=50&sort_by[desc]=date`),
         chargebeeApiGet(`/transactions?customer_id[is]=${c.id}&limit=50&sort_by[desc]=date`),
+        chargebeeApiGet(`/credit_notes?customer_id[is]=${c.id}&limit=50&sort_by[desc]=date`),
         chargebeeApiGet(`/payment_sources?customer_id[is]=${c.id}`)
       ]);
       
       const subscriptions = subsData?.list?.map((i: any) => parseChargebeeSubscription(i.subscription)) || [];
       const invoices = invoicesData?.list?.map((i: any) => parseChargebeeInvoice(i.invoice)) || [];
       const transactions = txnData?.list?.map((i: any) => parseChargebeeTransaction(i.transaction)) || [];
+      const creditNotes = creditNotesData?.list?.map((i: any) => parseChargebeeCreditNote(i.credit_note)) || [];
       const paymentSources = paymentSourcesData?.list || [];
       
       const customerWithData: ChargebeeCustomerWithData = {
@@ -629,6 +682,7 @@ export async function fetchChargebeeData(email: string): Promise<ChargebeeData> 
         subscriptions,
         invoices,
         transactions,
+        creditNotes,
         paymentSources
       };
       
@@ -1233,6 +1287,23 @@ export async function getInvoicePdfUrl(invoiceId: string): Promise<{ url: string
     return null;
   } catch (error: any) {
     console.error('Error getting invoice PDF URL:', error);
+    return null;
+  }
+}
+
+export async function getCreditNotePdfUrl(creditNoteId: string): Promise<{ url: string; validTill: string } | null> {
+  try {
+    const result = await chargebeeApiPost(`/credit_notes/${creditNoteId}/pdf`, {});
+    
+    if (result?.download?.download_url) {
+      return { 
+        url: result.download.download_url,
+        validTill: result.download.valid_till ? new Date(result.download.valid_till * 1000).toISOString() : ''
+      };
+    }
+    return null;
+  } catch (error: any) {
+    console.error('Error getting credit note PDF URL:', error);
     return null;
   }
 }

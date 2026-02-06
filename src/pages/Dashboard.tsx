@@ -71,6 +71,30 @@ interface ChargebeeTransaction {
   }>
 }
 
+interface ChargebeeCreditNote {
+  id: string
+  customerId: string
+  subscriptionId: string | null
+  referenceInvoiceId: string | null
+  type: string
+  reasonCode: string | null
+  createReasonCode: string | null
+  status: string
+  date: string
+  total: number
+  subTotal: number
+  amountAllocated: number
+  amountRefunded: number
+  amountAvailable: number
+  currencyCode: string
+  lineItems: Array<{
+    description: string
+    amount: number
+    quantity: number
+    entityType: string
+  }>
+}
+
 interface ChargebeeCustomer {
   id: string
   email: string
@@ -86,6 +110,7 @@ interface ChargebeeCustomer {
   subscriptions: ChargebeeSubscription[]
   invoices: ChargebeeInvoice[]
   transactions: ChargebeeTransaction[]
+  creditNotes: ChargebeeCreditNote[]
   paymentSources: any[]
 }
 
@@ -333,6 +358,7 @@ export default function Dashboard() {
   const collectibleInvoices = allInvoices.filter(inv => inv.amountDue > 0 && isInvoiceCollectible(inv.status))
   // hasCollectibleInvoices could be used for UI logic if needed
 void collectibleInvoices.length
+  const allCreditNotes = fullData?.chargebee.customers.flatMap(c => c.creditNotes || []) || []
   const allTransactions = fullData?.chargebee.customers.flatMap(c => c.transactions) || []
 
   const openSubscriptionDetail = (subscription: ChargebeeSubscription, cbCustomer: ChargebeeCustomer) => {
@@ -1173,6 +1199,176 @@ void collectibleInvoices.length
                   </table>
                 </div>
                 
+                
+                {allCreditNotes.length > 0 && (
+                  <>
+                    <h3 className="text-lg font-semibold text-text mt-8">Credit Notes & Refunds</h3>
+                    
+                    {/* Mobile Card View for Credit Notes */}
+                    <div className="mobile-card-list space-y-3">
+                      {allCreditNotes.map((cn) => (
+                        <div key={cn.id} className="bg-white rounded-lg border border-gray-200 p-4">
+                          <div className="flex justify-between items-start mb-3">
+                            <div>
+                              <p className="font-medium text-text text-sm">{cn.id}</p>
+                              <p className="text-xs text-muted">{formatDate(cn.date)}</p>
+                            </div>
+                            <div className="flex flex-col items-end gap-1">
+                              <span className={`px-2 py-0.5 text-xs rounded-full ${
+                                cn.status === 'refunded' ? 'bg-green-100 text-green-800' :
+                                cn.status === 'refund_due' ? 'bg-yellow-100 text-yellow-800' :
+                                cn.status === 'adjusted' ? 'bg-blue-100 text-blue-800' :
+                                cn.status === 'voided' ? 'bg-red-100 text-red-800' :
+                                'bg-gray-100 text-gray-800'
+                              }`}>
+                                {cn.status === 'refund_due' ? 'Refund Due' : cn.status}
+                              </span>
+                              <span className={`px-2 py-0.5 text-xs rounded-full ${
+                                cn.type === 'refundable' ? 'bg-purple-100 text-purple-800' :
+                                cn.type === 'adjustment' ? 'bg-blue-100 text-blue-800' :
+                                'bg-gray-100 text-gray-800'
+                              }`}>
+                                {cn.type}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 text-center border-t border-gray-100 pt-3 mb-3">
+                            <div>
+                              <p className="text-xs text-muted">Total</p>
+                              <p className="font-medium text-sm">{formatCurrency(cn.total)}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted">Refunded</p>
+                              <p className="font-medium text-sm text-green-600">{formatCurrency(cn.amountRefunded)}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted">Available</p>
+                              <p className={`font-medium text-sm ${cn.amountAvailable > 0 ? 'text-blue-600' : ''}`}>{formatCurrency(cn.amountAvailable)}</p>
+                            </div>
+                          </div>
+                          {cn.createReasonCode && (
+                            <p className="text-xs text-muted mb-2">Reason: {cn.createReasonCode}</p>
+                          )}
+                          {cn.referenceInvoiceId && (
+                            <p className="text-xs text-muted mb-2">Invoice: {cn.referenceInvoiceId}</p>
+                          )}
+                          {cn.lineItems.length > 0 && (
+                            <div className="border-t border-gray-100 pt-2 mt-2">
+                              {cn.lineItems.map((li, idx) => (
+                                <p key={idx} className="text-xs text-muted">{li.description} - {formatCurrency(li.amount)}</p>
+                              ))}
+                            </div>
+                          )}
+                          <div className="flex gap-2 mt-3">
+                            <button
+                              onClick={async () => {
+                                try {
+                                  const token = localStorage.getItem('auth_token')
+                                  const response = await fetch(`/api/billing/credit-note/${cn.id}/pdf`, {
+                                    headers: { 'Authorization': `Bearer ${token}` }
+                                  })
+                                  if (response.ok) {
+                                    const data = await response.json()
+                                    window.open(data.downloadUrl, '_blank')
+                                  }
+                                } catch (err) {
+                                  console.error('Failed to download credit note:', err)
+                                }
+                              }}
+                              className="flex-1 px-3 py-2 text-xs font-medium border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center justify-center gap-1"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                              PDF
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    
+                    {/* Desktop Table View for Credit Notes */}
+                    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden overflow-x-auto mobile-hidden">
+                      <table className="w-full">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">Credit Note</th>
+                            <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">Date</th>
+                            <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">Type</th>
+                            <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">Status</th>
+                            <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">Reason</th>
+                            <th className="text-right px-4 py-3 text-xs font-medium text-muted uppercase">Total</th>
+                            <th className="text-right px-4 py-3 text-xs font-medium text-muted uppercase">Refunded</th>
+                            <th className="text-right px-4 py-3 text-xs font-medium text-muted uppercase">Available</th>
+                            <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase">Invoice</th>
+                            <th className="text-center px-4 py-3 text-xs font-medium text-muted uppercase">PDF</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {allCreditNotes.map((cn) => (
+                            <tr key={cn.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-4 text-sm font-medium text-text">{cn.id}</td>
+                              <td className="px-4 py-4 text-sm text-muted">{formatDate(cn.date)}</td>
+                              <td className="px-4 py-4">
+                                <span className={`px-2 py-0.5 text-xs rounded-full ${
+                                  cn.type === 'refundable' ? 'bg-purple-100 text-purple-800' :
+                                  cn.type === 'adjustment' ? 'bg-blue-100 text-blue-800' :
+                                  'bg-gray-100 text-gray-800'
+                                }`}>
+                                  {cn.type}
+                                </span>
+                              </td>
+                              <td className="px-4 py-4">
+                                <span className={`px-2 py-0.5 text-xs rounded-full ${
+                                  cn.status === 'refunded' ? 'bg-green-100 text-green-800' :
+                                  cn.status === 'refund_due' ? 'bg-yellow-100 text-yellow-800' :
+                                  cn.status === 'adjusted' ? 'bg-blue-100 text-blue-800' :
+                                  cn.status === 'voided' ? 'bg-red-100 text-red-800' :
+                                  'bg-gray-100 text-gray-800'
+                                }`}>
+                                  {cn.status === 'refund_due' ? 'Refund Due' : cn.status}
+                                </span>
+                              </td>
+                              <td className="px-4 py-4 text-sm text-muted">{cn.createReasonCode || cn.reasonCode || '-'}</td>
+                              <td className="px-4 py-4 text-sm text-right font-medium">{formatCurrency(cn.total)}</td>
+                              <td className="px-4 py-4 text-sm text-right text-green-600">{formatCurrency(cn.amountRefunded)}</td>
+                              <td className={`px-4 py-4 text-sm text-right font-medium ${cn.amountAvailable > 0 ? 'text-blue-600' : ''}`}>
+                                {formatCurrency(cn.amountAvailable)}
+                              </td>
+                              <td className="px-4 py-4 text-sm text-muted">{cn.referenceInvoiceId || '-'}</td>
+                              <td className="px-4 py-4">
+                                <div className="flex items-center justify-center">
+                                  <button
+                                    onClick={async () => {
+                                      try {
+                                        const token = localStorage.getItem('auth_token')
+                                        const response = await fetch(`/api/billing/credit-note/${cn.id}/pdf`, {
+                                          headers: { 'Authorization': `Bearer ${token}` }
+                                        })
+                                        if (response.ok) {
+                                          const data = await response.json()
+                                          window.open(data.downloadUrl, '_blank')
+                                        }
+                                      } catch (err) {
+                                        console.error('Failed to download credit note:', err)
+                                      }
+                                    }}
+                                    className="p-1.5 text-gray-500 hover:text-primary hover:bg-gray-100 rounded transition-colors"
+                                    title="Download PDF"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
                 
                 <h3 className="text-lg font-semibold text-text mt-8">Transaction History</h3>
                 
