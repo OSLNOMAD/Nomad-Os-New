@@ -178,6 +178,8 @@ export const subscriptionPauses = pgTable("subscription_pauses", {
   resumeDate: timestamp("resume_date").notNull(),
   travelAddonAdded: boolean("travel_addon_added").default(false),
   travelAddonItemPriceId: varchar("travel_addon_item_price_id", { length: 255 }),
+  pauseReason: varchar("pause_reason", { length: 100 }),
+  pauseReasonDetails: text("pause_reason_details"),
   status: varchar("status", { length: 50 }).default("active"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
