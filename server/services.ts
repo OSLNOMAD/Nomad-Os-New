@@ -1452,6 +1452,34 @@ export async function pauseChargebeeSubscription(
   }
 }
 
+export async function removeScheduledChanges(
+  subscriptionId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const result = await chargebeeApiPost(
+      `/subscriptions/${subscriptionId}/remove_scheduled_changes`,
+      {}
+    );
+
+    if (result?.subscription) {
+      try {
+        await chargebeeApiPost('/comments', {
+          'entity_type': 'subscription',
+          'entity_id': subscriptionId,
+          'notes': `Customer cancelled scheduled plan change via the Customer Portal.`
+        });
+      } catch (commentErr) {
+        console.error('Failed to add Chargebee comment for removing scheduled changes:', commentErr);
+      }
+      return { success: true };
+    }
+    return { success: false, error: 'Failed to remove scheduled changes in Chargebee' };
+  } catch (error: any) {
+    console.error('Error removing scheduled changes:', error);
+    return { success: false, error: error.message || 'Failed to remove scheduled changes' };
+  }
+}
+
 export async function changeSubscriptionPlan(
   subscriptionId: string,
   newItemPriceId: string

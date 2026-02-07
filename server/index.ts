@@ -3835,6 +3835,58 @@ app.post("/api/plan-change/execute", async (req, res) => {
   }
 });
 
+app.post("/api/plan-change/cancel-scheduled", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "No authorization token provided" });
+    }
+    const token = authHeader.split(" ")[1];
+    let customerEmail: string | null = null;
+    try {
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      if (decoded.isTest) {
+        customerEmail = decoded.email;
+      }
+    } catch (e) {}
+    if (!customerEmail) {
+      const session = await storage.getSessionByToken(token);
+      if (!session) return res.status(401).json({ error: "Invalid or expired session" });
+      const customer = await storage.getCustomer(session.customerId);
+      if (!customer) return res.status(404).json({ error: "Customer not found" });
+      customerEmail = customer.email;
+    }
+    if (!customerEmail) return res.status(401).json({ error: "Unable to identify customer" });
+
+    const { subscriptionId } = req.body;
+    if (!subscriptionId) return res.status(400).json({ error: "Subscription ID is required" });
+
+    const { fetchCustomerFullData, removeScheduledChanges } = await import('./services');
+    const fullData = await fetchCustomerFullData(customerEmail);
+    let found = false;
+    for (const cbCust of fullData.chargebee.customers) {
+      for (const sub of cbCust.subscriptions) {
+        if (sub.id === subscriptionId) {
+          found = true;
+          break;
+        }
+      }
+      if (found) break;
+    }
+    if (!found) return res.status(404).json({ error: "Subscription not found" });
+
+    const result = await removeScheduledChanges(subscriptionId);
+    if (result.success) {
+      return res.json({ success: true, message: "Scheduled changes cancelled successfully" });
+    } else {
+      return res.status(500).json({ error: result.error || "Failed to cancel scheduled changes" });
+    }
+  } catch (error: any) {
+    console.error("Cancel scheduled changes error:", error);
+    res.status(500).json({ error: error.message || "Failed to cancel scheduled changes" });
+  }
+});
+
 app.get("/api/admin/plan-changes", async (req, res) => {
   try {
     const authHeader = req.headers.authorization;

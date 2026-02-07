@@ -232,6 +232,7 @@ export default function Dashboard() {
   const [subscriptionToPause, setSubscriptionToPause] = useState<ChargebeeSubscription | null>(null)
   const [planChangeModalOpen, setPlanChangeModalOpen] = useState(false)
   const [subscriptionToChangePlan, setSubscriptionToChangePlan] = useState<ChargebeeSubscription | null>(null)
+  const [cancellingScheduledChange, setCancellingScheduledChange] = useState<string | null>(null)
   const [historyModalOpen, setHistoryModalOpen] = useState(false)
   const [subscriptionForHistory, setSubscriptionForHistory] = useState<string | null>(null)
   const [cancellationHistory, setCancellationHistory] = useState<any[]>([])
@@ -393,6 +394,32 @@ void collectibleInvoices.length
       invoices: linkedInvoices,
       transactions: linkedTransactions
     })
+  }
+
+  const handleCancelScheduledChange = async (subscriptionId: string) => {
+    if (!confirm('Are you sure you want to cancel this scheduled plan change? Your plan will remain as it is.')) return
+    setCancellingScheduledChange(subscriptionId)
+    try {
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch('/api/plan-change/cancel-scheduled', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ subscriptionId })
+      })
+      const data = await response.json()
+      if (data.success) {
+        await fetchFullData()
+      } else {
+        alert(data.error || 'Failed to cancel scheduled change')
+      }
+    } catch (error) {
+      alert('Failed to cancel scheduled change. Please try again.')
+    } finally {
+      setCancellingScheduledChange(null)
+    }
   }
 
   const handlePayNow = async (chargebeeCustomerId: string) => {
@@ -901,6 +928,13 @@ void collectibleInvoices.length
                                         Your plan will change to <span className="font-semibold">{getPlanDisplayName(sub.scheduledChanges.planId)}</span> at{' '}
                                         <span className="font-semibold">{formatCurrency(sub.scheduledChanges.planAmount)}/{sub.billingPeriodUnit}</span> on your next billing date ({formatDate(sub.nextBillingAt)}).
                                       </p>
+                                      <button
+                                        onClick={() => handleCancelScheduledChange(sub.id)}
+                                        disabled={cancellingScheduledChange === sub.id}
+                                        className="mt-2 px-3 py-1.5 text-xs font-medium text-red-600 bg-white border border-red-300 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
+                                      >
+                                        {cancellingScheduledChange === sub.id ? 'Cancelling...' : 'Cancel Scheduled Change'}
+                                      </button>
                                     </div>
                                   </div>
                                 </div>
