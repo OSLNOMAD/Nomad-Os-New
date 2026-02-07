@@ -1433,9 +1433,6 @@ export async function changeSubscriptionPlan(
       if (item.item_type === 'plan') continue;
       params[`subscription_items[item_price_id][${itemIndex}]`] = item.item_price_id;
       params[`subscription_items[quantity][${itemIndex}]`] = String(item.quantity || 1);
-      if (item.unit_price !== undefined && item.unit_price !== null) {
-        params[`subscription_items[unit_price][${itemIndex}]`] = String(item.unit_price);
-      }
       itemIndex++;
     }
 
