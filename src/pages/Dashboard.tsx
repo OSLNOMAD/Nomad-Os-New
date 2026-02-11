@@ -973,8 +973,12 @@ void collectibleInvoices.length
                                     setSubscriptionToChangePlan(sub)
                                     setPlanChangeModalOpen(true)
                                   }}
-                                  className="px-4 py-2 text-sm font-medium border rounded-lg transition-colors text-blue-600 border-blue-400 hover:bg-blue-50"
+                                  className="group inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-xl transition-all duration-200 hover:shadow-md active:scale-[0.97]"
+                                  style={{ color: '#10a37f', backgroundColor: 'rgba(16,163,127,0.06)', border: '1px solid rgba(16,163,127,0.15)' }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(16,163,127,0.12)'; e.currentTarget.style.borderColor = 'rgba(16,163,127,0.3)' }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(16,163,127,0.06)'; e.currentTarget.style.borderColor = 'rgba(16,163,127,0.15)' }}
                                 >
+                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
                                   Change Plan
                                 </button>
                               )}
@@ -984,8 +988,12 @@ void collectibleInvoices.length
                                     setSubscriptionForAddons(sub)
                                     setAddonsModalOpen(true)
                                   }}
-                                  className="px-4 py-2 text-sm font-medium border rounded-lg transition-colors text-purple-600 border-purple-400 hover:bg-purple-50"
+                                  className="group inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-xl transition-all duration-200 hover:shadow-md active:scale-[0.97]"
+                                  style={{ color: '#10a37f', backgroundColor: 'rgba(16,163,127,0.06)', border: '1px solid rgba(16,163,127,0.15)' }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(16,163,127,0.12)'; e.currentTarget.style.borderColor = 'rgba(16,163,127,0.3)' }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(16,163,127,0.06)'; e.currentTarget.style.borderColor = 'rgba(16,163,127,0.15)' }}
                                 >
+                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14v6m-3-3h6M6 10h2a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v2a2 2 0 002 2zm10 0h2a2 2 0 002-2V6a2 2 0 00-2-2h-2a2 2 0 00-2 2v2a2 2 0 002 2zM6 20h2a2 2 0 002-2v-2a2 2 0 00-2-2H6a2 2 0 00-2 2v2a2 2 0 002 2z" /></svg>
                                   Manage Add-ons
                                 </button>
                               )}
@@ -995,11 +1003,12 @@ void collectibleInvoices.length
                                     setSubscriptionToPause(sub)
                                     setPauseModalOpen(true)
                                   }}
-                                  className="px-4 py-2 text-sm font-medium border rounded-lg transition-colors"
-                                  style={{ color: '#10a37f', borderColor: '#10a37f' }}
-                                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(16,163,127,0.05)' }}
-                                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent' }}
+                                  className="group inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-xl transition-all duration-200 hover:shadow-md active:scale-[0.97]"
+                                  style={{ color: '#92400e', backgroundColor: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)' }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.12)'; e.currentTarget.style.borderColor = 'rgba(245,158,11,0.3)' }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.06)'; e.currentTarget.style.borderColor = 'rgba(245,158,11,0.15)' }}
                                 >
+                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                                   Pause Subscription
                                 </button>
                               )}
@@ -1010,14 +1019,22 @@ void collectibleInvoices.length
                                       setSubscriptionToCancel(sub)
                                       setCancellationModalOpen(true)
                                     }}
-                                    className="px-4 py-2 text-sm font-medium text-red-600 border border-red-300 rounded-lg hover:bg-red-50 transition-colors"
+                                    className="group inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-xl transition-all duration-200 hover:shadow-md active:scale-[0.97]"
+                                    style={{ color: '#dc2626', backgroundColor: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.12)' }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(239,68,68,0.08)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.25)' }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(239,68,68,0.04)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.12)' }}
                                   >
+                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                                     Cancel Subscription
                                   </button>
                                   <button
                                     onClick={() => handleViewCancellationHistory(sub.id)}
-                                    className="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                                    className="group inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-xl text-gray-500 transition-all duration-200 hover:shadow-sm active:scale-[0.97]"
+                                    style={{ backgroundColor: 'rgba(107,114,128,0.04)', border: '1px solid rgba(107,114,128,0.12)' }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(107,114,128,0.08)'; e.currentTarget.style.borderColor = 'rgba(107,114,128,0.2)' }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(107,114,128,0.04)'; e.currentTarget.style.borderColor = 'rgba(107,114,128,0.12)' }}
                                   >
+                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                                     View History
                                   </button>
                                 </>
