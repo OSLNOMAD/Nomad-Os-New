@@ -175,6 +175,9 @@ export function ManageAddonsModal({ isOpen, onClose, subscription, token, onAddo
       if (addon.family === 'travel') {
         return lower.includes('travel-upgrade') || lower.includes('travel-modem') || lower.includes('nomad-travel') || lower.includes('travel-pause')
       }
+      if (addon.family === 'prime') {
+        return lower.includes('nomad-prime') || lower.includes('prime-upgrade') || lower.includes('prime-founders')
+      }
       return ca.itemPriceId === addon.itemPriceId
     })
     return match ? match.amount : addon.price

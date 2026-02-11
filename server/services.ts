@@ -1405,6 +1405,43 @@ export async function addTravelAddonToSubscription(subscriptionId: string): Prom
   }
 }
 
+export async function addPrimeAddonToSubscription(subscriptionId: string): Promise<{ success: boolean; invoiceId?: string; error?: string }> {
+  try {
+    const primeAddonItemPriceId = 'Updated-Nomad-Prime-1995-USD-Monthly';
+
+    const params: Record<string, string> = {
+      'subscription_items[item_price_id][0]': primeAddonItemPriceId,
+      'subscription_items[quantity][0]': '1',
+      'replace_items_list': 'false',
+      'invoice_immediately': 'true',
+      'prorate': 'true',
+    };
+
+    const result = await chargebeeApiPost(
+      `/subscriptions/${subscriptionId}/update_for_items`,
+      params
+    );
+
+    if (result?.subscription) {
+      const invoiceId = result?.invoice?.id || null;
+      try {
+        await chargebeeApiPost('/comments', {
+          'entity_type': 'subscription',
+          'entity_id': subscriptionId,
+          'notes': 'Customer added the Nomad Prime Upgrade to their subscription via the Customer Portal.'
+        });
+      } catch (commentErr) {
+        console.error('Failed to add Chargebee comment:', commentErr);
+      }
+      return { success: true, invoiceId };
+    }
+    return { success: false, error: 'Failed to add Prime upgrade to subscription' };
+  } catch (error: any) {
+    console.error('Error adding Prime upgrade:', error);
+    return { success: false, error: error.message || 'Failed to add Prime upgrade' };
+  }
+}
+
 export async function removeAddonFromSubscription(subscriptionId: string, addonItemPriceId: string): Promise<{ success: boolean; error?: string }> {
   try {
     const subData = await chargebeeApiGet(`/subscriptions/${subscriptionId}`);
@@ -1416,11 +1453,14 @@ export async function removeAddonFromSubscription(subscriptionId: string, addonI
     const addonExists = currentItems.some((item: any) => item.item_price_id === addonItemPriceId && item.item_type === 'addon');
 
     if (!addonExists) {
-      const familyMatch = currentItems.find((item: any) => {
+      const { isAddonInFamily, AVAILABLE_ADDONS } = await import('../shared/addonConfig');
+      const addonDef = AVAILABLE_ADDONS.find(a => a.itemPriceId === addonItemPriceId);
+      const family = addonDef?.family;
+
+      const familyMatch = family ? currentItems.find((item: any) => {
         if (item.item_type !== 'addon') return false;
-        const lower = item.item_price_id.toLowerCase();
-        return lower.includes('travel-upgrade') || lower.includes('travel-modem') || lower.includes('nomad-travel') || lower.includes('travel-pause');
-      });
+        return isAddonInFamily(item.item_price_id, family);
+      }) : null;
 
       if (familyMatch) {
         addonItemPriceId = familyMatch.item_price_id;

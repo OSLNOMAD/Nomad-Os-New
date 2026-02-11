@@ -6,7 +6,7 @@ import bcrypt from "bcryptjs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { storage } from "./storage";
-import { fetchCustomerFullData, fetchChargebeeCatalogItems, fetchChargebeeItemPrices, removeAddonFromSubscription, getSubscriptionCurrentItems, addTravelAddonToSubscription, verifySubscriptionOwnership } from "./services";
+import { fetchCustomerFullData, fetchChargebeeCatalogItems, fetchChargebeeItemPrices, removeAddonFromSubscription, getSubscriptionCurrentItems, addTravelAddonToSubscription, addPrimeAddonToSubscription, verifySubscriptionOwnership } from "./services";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -4064,6 +4064,15 @@ app.post("/api/subscription/addons/add", async (req, res) => {
       const result = await addTravelAddonToSubscription(subscriptionId);
       if (result.success) {
         return res.json({ success: true, invoiceId: result.invoiceId, message: "Travel Add-on added successfully" });
+      } else {
+        return res.status(400).json({ error: result.error || "Failed to add add-on" });
+      }
+    }
+
+    if (addonFamily === 'prime') {
+      const result = await addPrimeAddonToSubscription(subscriptionId);
+      if (result.success) {
+        return res.json({ success: true, invoiceId: result.invoiceId, message: "Prime Upgrade added successfully" });
       } else {
         return res.status(400).json({ error: result.error || "Failed to add add-on" });
       }
