@@ -1407,7 +1407,7 @@ export async function addTravelAddonToSubscription(subscriptionId: string): Prom
 
 export async function addPrimeAddonToSubscription(subscriptionId: string): Promise<{ success: boolean; invoiceId?: string; error?: string }> {
   try {
-    const primeAddonItemPriceId = 'Updated-Nomad-Prime-1995-USD-Monthly';
+    const primeAddonItemPriceId = 'Nomad-Prime-10-USD-Monthly';
 
     const params: Record<string, string> = {
       'subscription_items[item_price_id][0]': primeAddonItemPriceId,

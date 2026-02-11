@@ -41,9 +41,9 @@ export const AVAILABLE_ADDONS: AddonDefinition[] = [
   {
     id: 'prime-upgrade',
     family: 'prime',
-    itemPriceId: 'Updated-Nomad-Prime-1995-USD-Monthly',
+    itemPriceId: 'Nomad-Prime-10-USD-Monthly',
     displayName: 'Nomad Prime Upgrade',
-    price: 19.95,
+    price: 10.00,
     billingPeriod: 'month',
     headline: 'Priority support & device protection',
     bullets: [
