@@ -1021,8 +1021,8 @@ void collectibleInvoices.length
                     )}
                     
                     {cbCustomer.subscriptions.map((sub) => (
-                      <div key={sub.id} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-                        <div className="h-1" style={{ background: 'linear-gradient(90deg, #0d9668, #10a37f, #34d399)' }}></div>
+                      <div key={sub.id} className="bg-white rounded-2xl border border-gray-100">
+                        <div className="h-1 rounded-t-2xl" style={{ background: 'linear-gradient(90deg, #0d9668, #10a37f, #34d399)' }}></div>
                         <div className="p-6">
                         <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
                           <div className="flex-1">
