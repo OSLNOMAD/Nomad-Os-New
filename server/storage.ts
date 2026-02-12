@@ -1,4 +1,4 @@
-import { customers, otpCodes, sessions, escalationTickets, customerFeedback, slowSpeedSessions, adminUsers, portalSettings, cancellationRequests, subscriptionPauses, planChangeVerifications, type Customer, type InsertCustomer, type OtpCode, type InsertOtpCode, type Session, type InsertSession, type EscalationTicket, type InsertEscalationTicket, type CustomerFeedback, type InsertCustomerFeedback, type SlowSpeedSession, type InsertSlowSpeedSession, type AdminUser, type InsertAdminUser, type PortalSetting, type InsertPortalSetting, type CancellationRequest, type InsertCancellationRequest, type SubscriptionPause, type InsertSubscriptionPause, type PlanChangeVerification, type InsertPlanChangeVerification } from "../shared/schema";
+import { customers, otpCodes, sessions, escalationTickets, customerFeedback, slowSpeedSessions, adminUsers, portalSettings, cancellationRequests, subscriptionPauses, planChangeVerifications, addonLogs, type Customer, type InsertCustomer, type OtpCode, type InsertOtpCode, type Session, type InsertSession, type EscalationTicket, type InsertEscalationTicket, type CustomerFeedback, type InsertCustomerFeedback, type SlowSpeedSession, type InsertSlowSpeedSession, type AdminUser, type InsertAdminUser, type PortalSetting, type InsertPortalSetting, type CancellationRequest, type InsertCancellationRequest, type SubscriptionPause, type InsertSubscriptionPause, type PlanChangeVerification, type InsertPlanChangeVerification, type AddonLog, type InsertAddonLog } from "../shared/schema";
 import { db } from "./db";
 import { eq, and, gt, or, desc } from "drizzle-orm";
 
@@ -55,6 +55,9 @@ export interface IStorage {
 
   createPlanChangeVerification(data: InsertPlanChangeVerification): Promise<PlanChangeVerification>;
   getAllPlanChangeVerifications(): Promise<PlanChangeVerification[]>;
+
+  createAddonLog(data: InsertAddonLog): Promise<AddonLog>;
+  getAllAddonLogs(): Promise<AddonLog[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -394,6 +397,15 @@ export class DatabaseStorage implements IStorage {
 
   async getAllPlanChangeVerifications(): Promise<PlanChangeVerification[]> {
     return db.select().from(planChangeVerifications).orderBy(desc(planChangeVerifications.createdAt));
+  }
+
+  async createAddonLog(data: InsertAddonLog): Promise<AddonLog> {
+    const [created] = await db.insert(addonLogs).values(data).returning();
+    return created;
+  }
+
+  async getAllAddonLogs(): Promise<AddonLog[]> {
+    return db.select().from(addonLogs).orderBy(desc(addonLogs.createdAt));
   }
 }
 

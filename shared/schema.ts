@@ -185,6 +185,23 @@ export const subscriptionPauses = pgTable("subscription_pauses", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+export const addonLogs = pgTable("addon_logs", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").references(() => customers.id),
+  customerEmail: varchar("customer_email", { length: 255 }).notNull(),
+  subscriptionId: varchar("subscription_id", { length: 255 }).notNull(),
+  chargebeeCustomerId: varchar("chargebee_customer_id", { length: 255 }),
+  action: varchar("action", { length: 20 }).notNull(),
+  addonFamily: varchar("addon_family", { length: 50 }).notNull(),
+  addonItemPriceId: varchar("addon_item_price_id", { length: 255 }).notNull(),
+  addonName: varchar("addon_name", { length: 255 }),
+  addonPrice: integer("addon_price"),
+  invoiceId: varchar("invoice_id", { length: 255 }),
+  status: varchar("status", { length: 50 }).default("completed"),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const customersRelations = relations(customers, ({ many }) => ({
   otpCodes: many(otpCodes),
   sessions: many(sessions),
@@ -226,6 +243,8 @@ export type PlanChangeVerification = typeof planChangeVerifications.$inferSelect
 export type InsertPlanChangeVerification = typeof planChangeVerifications.$inferInsert;
 export type SubscriptionPause = typeof subscriptionPauses.$inferSelect;
 export type InsertSubscriptionPause = typeof subscriptionPauses.$inferInsert;
+export type AddonLog = typeof addonLogs.$inferSelect;
+export type InsertAddonLog = typeof addonLogs.$inferInsert;
 
 export const insertCustomerSchema = createInsertSchema(customers);
 export const insertOtpCodeSchema = createInsertSchema(otpCodes);

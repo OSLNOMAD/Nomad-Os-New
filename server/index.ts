@@ -3956,6 +3956,78 @@ app.get("/api/admin/plan-changes/export", async (req, res) => {
   }
 });
 
+app.get("/api/admin/addon-logs", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "No authorization token provided" });
+    }
+    const token = authHeader.split(" ")[1];
+    try {
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      if (!decoded.isAdmin) return res.status(403).json({ error: "Admin access required" });
+    } catch (e) {
+      return res.status(401).json({ error: "Invalid admin token" });
+    }
+
+    const addonLogs = await storage.getAllAddonLogs();
+    res.json({ addonLogs });
+  } catch (error: any) {
+    console.error("Get addon logs error:", error);
+    res.status(500).json({ error: error.message || "Failed to get addon logs" });
+  }
+});
+
+app.get("/api/admin/addon-logs/export", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "No authorization token provided" });
+    }
+    const token = authHeader.split(" ")[1];
+    try {
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      if (!decoded.isAdmin) return res.status(403).json({ error: "Admin access required" });
+    } catch (e) {
+      return res.status(401).json({ error: "Invalid admin token" });
+    }
+
+    const addonLogs = await storage.getAllAddonLogs();
+
+    const escapeCSV = (val: any) => {
+      if (val === null || val === undefined) return '';
+      const s = String(val);
+      if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+        return '"' + s.replace(/"/g, '""') + '"';
+      }
+      return s;
+    };
+
+    const headers = ['Date', 'Customer Email', 'Subscription ID', 'Action', 'Add-on', 'Add-on Family', 'Item Price ID', 'Price', 'Invoice ID', 'Status', 'Error'];
+    const rows = addonLogs.map(log => [
+      log.createdAt ? new Date(log.createdAt).toISOString() : '',
+      escapeCSV(log.customerEmail),
+      escapeCSV(log.subscriptionId),
+      escapeCSV(log.action),
+      escapeCSV(log.addonName),
+      escapeCSV(log.addonFamily),
+      escapeCSV(log.addonItemPriceId),
+      log.addonPrice ? `$${(log.addonPrice / 100).toFixed(2)}` : '',
+      escapeCSV(log.invoiceId),
+      escapeCSV(log.status),
+      escapeCSV(log.errorMessage)
+    ].join(','));
+
+    const csv = [headers.join(','), ...rows].join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=addon-logs-${new Date().toISOString().split('T')[0]}.csv`);
+    res.send(csv);
+  } catch (error: any) {
+    console.error("Export addon logs error:", error);
+    res.status(500).json({ error: error.message || "Failed to export addon logs" });
+  }
+});
+
 if (process.env.NODE_ENV === "production") {
   const distPath = path.join(__dirname, "..", "dist");
   app.use(express.static(distPath));
@@ -4060,25 +4132,39 @@ app.post("/api/subscription/addons/add", async (req, res) => {
       return res.status(400).json({ error: "This add-on is already active on your subscription" });
     }
 
+    let result: any = null;
     if (addonFamily === 'travel') {
-      const result = await addTravelAddonToSubscription(subscriptionId);
-      if (result.success) {
-        return res.json({ success: true, invoiceId: result.invoiceId, message: "Travel Add-on added successfully" });
-      } else {
-        return res.status(400).json({ error: result.error || "Failed to add add-on" });
-      }
+      result = await addTravelAddonToSubscription(subscriptionId);
+    } else if (addonFamily === 'prime') {
+      result = await addPrimeAddonToSubscription(subscriptionId);
+    } else {
+      return res.status(400).json({ error: "Unknown add-on family" });
     }
 
-    if (addonFamily === 'prime') {
-      const result = await addPrimeAddonToSubscription(subscriptionId);
-      if (result.success) {
-        return res.json({ success: true, invoiceId: result.invoiceId, message: "Prime Upgrade added successfully" });
-      } else {
-        return res.status(400).json({ error: result.error || "Failed to add add-on" });
-      }
+    try {
+      await storage.createAddonLog({
+        customerId: decoded.customerId,
+        customerEmail: decoded.email,
+        subscriptionId,
+        chargebeeCustomerId: ownership.customerId || null,
+        action: 'add',
+        addonFamily,
+        addonItemPriceId: addonDef.itemPriceId,
+        addonName: addonDef.displayName,
+        addonPrice: Math.round(addonDef.price * 100),
+        invoiceId: result.invoiceId || null,
+        status: result.success ? 'completed' : 'failed',
+        errorMessage: result.success ? null : (result.error || null),
+      });
+    } catch (logErr) {
+      console.error("Failed to log addon operation:", logErr);
     }
 
-    return res.status(400).json({ error: "Unknown add-on family" });
+    if (result.success) {
+      return res.json({ success: true, invoiceId: result.invoiceId, message: `${addonDef.displayName} added successfully` });
+    } else {
+      return res.status(400).json({ error: result.error || "Failed to add add-on" });
+    }
   } catch (error: any) {
     console.error("Add addon error:", error);
     res.status(500).json({ error: error.message || "Failed to add add-on" });
@@ -4110,8 +4196,28 @@ app.post("/api/subscription/addons/remove", async (req, res) => {
     }
 
     const result = await removeAddonFromSubscription(subscriptionId, addonDef.itemPriceId);
+
+    try {
+      await storage.createAddonLog({
+        customerId: decoded.customerId,
+        customerEmail: decoded.email,
+        subscriptionId,
+        chargebeeCustomerId: ownership.customerId || null,
+        action: 'remove',
+        addonFamily,
+        addonItemPriceId: addonDef.itemPriceId,
+        addonName: addonDef.displayName,
+        addonPrice: Math.round(addonDef.price * 100),
+        invoiceId: null,
+        status: result.success ? 'completed' : 'failed',
+        errorMessage: result.success ? null : (result.error || null),
+      });
+    } catch (logErr) {
+      console.error("Failed to log addon removal:", logErr);
+    }
+
     if (result.success) {
-      return res.json({ success: true, message: "Add-on removed successfully" });
+      return res.json({ success: true, message: `${addonDef.displayName} removed successfully` });
     } else {
       return res.status(400).json({ error: result.error || "Failed to remove add-on" });
     }
