@@ -237,6 +237,8 @@ export default function Dashboard() {
   const [addonsModalOpen, setAddonsModalOpen] = useState(false)
   const [subscriptionForAddons, setSubscriptionForAddons] = useState<ChargebeeSubscription | null>(null)
   const [cancellingScheduledChange, setCancellingScheduledChange] = useState<string | null>(null)
+  const [manageDropdownOpen, setManageDropdownOpen] = useState<string | null>(null)
+  const manageDropdownRef = useRef<HTMLDivElement>(null)
   const [historyModalOpen, setHistoryModalOpen] = useState(false)
   const [subscriptionForHistory, setSubscriptionForHistory] = useState<string | null>(null)
   const [cancellationHistory, setCancellationHistory] = useState<any[]>([])
@@ -326,6 +328,9 @@ export default function Dashboard() {
       }
       if (deviceHelpRef.current && !deviceHelpRef.current.contains(event.target as Node)) {
         setDeviceHelpOpen(null)
+      }
+      if (manageDropdownRef.current && !manageDropdownRef.current.contains(event.target as Node)) {
+        setManageDropdownOpen(null)
       }
     }
 
@@ -1155,77 +1160,88 @@ void collectibleInvoices.length
                               >
                                 {paymentLoading === 'update' ? 'Loading...' : 'Update Payment Method'}
                               </button>
-                              {sub.status === 'active' && isPlanChangeEligible(sub.planId) && !sub.hasScheduledChanges && (
-                                <button
-                                  onClick={() => {
-                                    setSubscriptionToChangePlan(sub)
-                                    setPlanChangeModalOpen(true)
-                                  }}
-                                  className="group inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-xl transition-all duration-200 hover:shadow-md active:scale-[0.97]"
-                                  style={{ color: '#10a37f', backgroundColor: 'rgba(16,163,127,0.06)', border: '1px solid rgba(16,163,127,0.15)' }}
-                                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(16,163,127,0.12)'; e.currentTarget.style.borderColor = 'rgba(16,163,127,0.3)' }}
-                                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(16,163,127,0.06)'; e.currentTarget.style.borderColor = 'rgba(16,163,127,0.15)' }}
-                                >
-                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
-                                  Change Plan
-                                </button>
-                              )}
-                              {sub.status === 'active' && (
-                                <button
-                                  onClick={() => {
-                                    setSubscriptionForAddons(sub)
-                                    setAddonsModalOpen(true)
-                                  }}
-                                  className="group inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-xl transition-all duration-200 hover:shadow-md active:scale-[0.97]"
-                                  style={{ color: '#10a37f', backgroundColor: 'rgba(16,163,127,0.06)', border: '1px solid rgba(16,163,127,0.15)' }}
-                                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(16,163,127,0.12)'; e.currentTarget.style.borderColor = 'rgba(16,163,127,0.3)' }}
-                                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(16,163,127,0.06)'; e.currentTarget.style.borderColor = 'rgba(16,163,127,0.15)' }}
-                                >
-                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14v6m-3-3h6M6 10h2a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v2a2 2 0 002 2zm10 0h2a2 2 0 002-2V6a2 2 0 00-2-2h-2a2 2 0 00-2 2v2a2 2 0 002 2zM6 20h2a2 2 0 002-2v-2a2 2 0 00-2-2H6a2 2 0 00-2 2v2a2 2 0 002 2z" /></svg>
-                                  Manage Add-ons
-                                </button>
-                              )}
-                              {sub.status === 'active' && (
-                                <button
-                                  onClick={() => {
-                                    setSubscriptionToPause(sub)
-                                    setPauseModalOpen(true)
-                                  }}
-                                  className="group inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-xl transition-all duration-200 hover:shadow-md active:scale-[0.97]"
-                                  style={{ color: '#92400e', backgroundColor: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)' }}
-                                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.12)'; e.currentTarget.style.borderColor = 'rgba(245,158,11,0.3)' }}
-                                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.06)'; e.currentTarget.style.borderColor = 'rgba(245,158,11,0.15)' }}
-                                >
-                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                  Pause Subscription
-                                </button>
-                              )}
                               {(sub.status === 'active' || sub.status === 'paused' || sub.status === 'in_trial') && (
-                                <>
+                                <div className="relative" ref={manageDropdownOpen === sub.id ? manageDropdownRef : undefined}>
                                   <button
-                                    onClick={() => {
-                                      setSubscriptionToCancel(sub)
-                                      setCancellationModalOpen(true)
-                                    }}
+                                    onClick={() => setManageDropdownOpen(manageDropdownOpen === sub.id ? null : sub.id)}
                                     className="group inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-xl transition-all duration-200 hover:shadow-md active:scale-[0.97]"
-                                    style={{ color: '#dc2626', backgroundColor: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.12)' }}
-                                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(239,68,68,0.08)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.25)' }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(239,68,68,0.04)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.12)' }}
+                                    style={{ color: '#10a37f', backgroundColor: 'rgba(16,163,127,0.06)', border: '1px solid rgba(16,163,127,0.15)' }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(16,163,127,0.12)'; e.currentTarget.style.borderColor = 'rgba(16,163,127,0.3)' }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(16,163,127,0.06)'; e.currentTarget.style.borderColor = 'rgba(16,163,127,0.15)' }}
                                   >
-                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                                    Cancel Subscription
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                                    Manage Subscription
+                                    <svg className={`w-3.5 h-3.5 transition-transform duration-200 ${manageDropdownOpen === sub.id ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                                   </button>
-                                  <button
-                                    onClick={() => handleViewCancellationHistory(sub.id)}
-                                    className="group inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-xl text-gray-500 transition-all duration-200 hover:shadow-sm active:scale-[0.97]"
-                                    style={{ backgroundColor: 'rgba(107,114,128,0.04)', border: '1px solid rgba(107,114,128,0.12)' }}
-                                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(107,114,128,0.08)'; e.currentTarget.style.borderColor = 'rgba(107,114,128,0.2)' }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(107,114,128,0.04)'; e.currentTarget.style.borderColor = 'rgba(107,114,128,0.12)' }}
-                                  >
-                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                    View History
-                                  </button>
-                                </>
+                                  {manageDropdownOpen === sub.id && (
+                                    <div className="absolute left-0 top-full mt-2 w-56 bg-white rounded-xl border border-gray-200 shadow-lg z-50 py-1.5 animate-in fade-in slide-in-from-top-1 duration-150">
+                                      {sub.status === 'active' && isPlanChangeEligible(sub.planId) && !sub.hasScheduledChanges && (
+                                        <button
+                                          onClick={() => {
+                                            setManageDropdownOpen(null)
+                                            setSubscriptionToChangePlan(sub)
+                                            setPlanChangeModalOpen(true)
+                                          }}
+                                          className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                                        >
+                                          <svg className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+                                          Change Plan
+                                        </button>
+                                      )}
+                                      {sub.status === 'active' && (
+                                        <button
+                                          onClick={() => {
+                                            setManageDropdownOpen(null)
+                                            setSubscriptionForAddons(sub)
+                                            setAddonsModalOpen(true)
+                                          }}
+                                          className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                                        >
+                                          <svg className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14v6m-3-3h6M6 10h2a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v2a2 2 0 002 2zm10 0h2a2 2 0 002-2V6a2 2 0 00-2-2h-2a2 2 0 00-2 2v2a2 2 0 002 2zM6 20h2a2 2 0 002-2v-2a2 2 0 00-2-2H6a2 2 0 00-2 2v2a2 2 0 002 2z" /></svg>
+                                          Manage Add-ons
+                                        </button>
+                                      )}
+                                      {sub.status === 'active' && (
+                                        <>
+                                          <div className="my-1.5 mx-3 border-t border-gray-100"></div>
+                                          <button
+                                            onClick={() => {
+                                              setManageDropdownOpen(null)
+                                              setSubscriptionToPause(sub)
+                                              setPauseModalOpen(true)
+                                            }}
+                                            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-amber-700 hover:bg-amber-50 transition-colors"
+                                          >
+                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                            Pause Subscription
+                                          </button>
+                                        </>
+                                      )}
+                                      <div className="my-1.5 mx-3 border-t border-gray-100"></div>
+                                      <button
+                                        onClick={() => {
+                                          setManageDropdownOpen(null)
+                                          setSubscriptionToCancel(sub)
+                                          setCancellationModalOpen(true)
+                                        }}
+                                        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                                      >
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                        Cancel Subscription
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          setManageDropdownOpen(null)
+                                          handleViewCancellationHistory(sub.id)
+                                        }}
+                                        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-500 hover:bg-gray-50 transition-colors"
+                                      >
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                        View History
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
                               )}
                             </div>
                             
