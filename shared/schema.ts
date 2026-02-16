@@ -216,6 +216,46 @@ export const externalApiLogs = pgTable("external_api_logs", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const billingCreditConfig = pgTable("billing_credit_config", {
+  id: serial("id").primaryKey(),
+  issueType: varchar("issue_type", { length: 50 }).notNull().unique(),
+  label: varchar("label", { length: 255 }).notNull(),
+  creditType: varchar("credit_type", { length: 30 }).notNull().default("fixed"),
+  creditAmountCents: integer("credit_amount_cents").notNull().default(0),
+  creditPercentage: integer("credit_percentage").default(0),
+  maxCreditCents: integer("max_credit_cents"),
+  enabled: boolean("enabled").default(true),
+  description: text("description"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  updatedBy: varchar("updated_by", { length: 255 }),
+});
+
+export const billingResolutions = pgTable("billing_resolutions", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").references(() => customers.id),
+  customerEmail: varchar("customer_email", { length: 255 }).notNull(),
+  chargebeeCustomerId: varchar("chargebee_customer_id", { length: 255 }),
+  issueType: varchar("issue_type", { length: 50 }).notNull(),
+  issueDetails: text("issue_details"),
+  subscriptionId: varchar("subscription_id", { length: 255 }),
+  subscriptionStatus: varchar("subscription_status", { length: 50 }),
+  subscriptionPrice: integer("subscription_price"),
+  creditOffered: integer("credit_offered"),
+  creditType: varchar("credit_type", { length: 30 }),
+  outcome: varchar("outcome", { length: 30 }).notNull().default("pending"),
+  creditApplied: boolean("credit_applied").default(false),
+  chargebeeCreditId: varchar("chargebee_credit_id", { length: 255 }),
+  zendeskTicketId: varchar("zendesk_ticket_id", { length: 100 }),
+  proofFileName: varchar("proof_file_name", { length: 255 }),
+  proofFileData: text("proof_file_data"),
+  trackingNumber: varchar("tracking_number", { length: 255 }),
+  contactMethod: varchar("contact_method", { length: 20 }),
+  contactPhone: varchar("contact_phone", { length: 20 }),
+  additionalNotes: text("additional_notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const customersRelations = relations(customers, ({ many }) => ({
   otpCodes: many(otpCodes),
   sessions: many(sessions),
@@ -261,6 +301,11 @@ export type AddonLog = typeof addonLogs.$inferSelect;
 export type InsertAddonLog = typeof addonLogs.$inferInsert;
 export type ExternalApiLog = typeof externalApiLogs.$inferSelect;
 export type InsertExternalApiLog = typeof externalApiLogs.$inferInsert;
+
+export type BillingCreditConfig = typeof billingCreditConfig.$inferSelect;
+export type InsertBillingCreditConfig = typeof billingCreditConfig.$inferInsert;
+export type BillingResolution = typeof billingResolutions.$inferSelect;
+export type InsertBillingResolution = typeof billingResolutions.$inferInsert;
 
 export const insertCustomerSchema = createInsertSchema(customers);
 export const insertOtpCodeSchema = createInsertSchema(otpCodes);

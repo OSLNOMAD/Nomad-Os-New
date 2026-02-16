@@ -1,4 +1,4 @@
-import { customers, otpCodes, sessions, escalationTickets, customerFeedback, slowSpeedSessions, adminUsers, portalSettings, cancellationRequests, subscriptionPauses, planChangeVerifications, addonLogs, externalApiLogs, type Customer, type InsertCustomer, type OtpCode, type InsertOtpCode, type Session, type InsertSession, type EscalationTicket, type InsertEscalationTicket, type CustomerFeedback, type InsertCustomerFeedback, type SlowSpeedSession, type InsertSlowSpeedSession, type AdminUser, type InsertAdminUser, type PortalSetting, type InsertPortalSetting, type CancellationRequest, type InsertCancellationRequest, type SubscriptionPause, type InsertSubscriptionPause, type PlanChangeVerification, type InsertPlanChangeVerification, type AddonLog, type InsertAddonLog, type ExternalApiLog, type InsertExternalApiLog } from "../shared/schema";
+import { customers, otpCodes, sessions, escalationTickets, customerFeedback, slowSpeedSessions, adminUsers, portalSettings, cancellationRequests, subscriptionPauses, planChangeVerifications, addonLogs, externalApiLogs, billingCreditConfig, billingResolutions, type Customer, type InsertCustomer, type OtpCode, type InsertOtpCode, type Session, type InsertSession, type EscalationTicket, type InsertEscalationTicket, type CustomerFeedback, type InsertCustomerFeedback, type SlowSpeedSession, type InsertSlowSpeedSession, type AdminUser, type InsertAdminUser, type PortalSetting, type InsertPortalSetting, type CancellationRequest, type InsertCancellationRequest, type SubscriptionPause, type InsertSubscriptionPause, type PlanChangeVerification, type InsertPlanChangeVerification, type AddonLog, type InsertAddonLog, type ExternalApiLog, type InsertExternalApiLog, type BillingCreditConfig, type InsertBillingCreditConfig, type BillingResolution, type InsertBillingResolution } from "../shared/schema";
 import { db } from "./db";
 import { eq, and, gt, or, desc } from "drizzle-orm";
 
@@ -61,6 +61,16 @@ export interface IStorage {
 
   createExternalApiLog(data: InsertExternalApiLog): Promise<ExternalApiLog>;
   getExternalApiLogs(limit?: number): Promise<ExternalApiLog[]>;
+
+  getAllBillingCreditConfigs(): Promise<BillingCreditConfig[]>;
+  getBillingCreditConfig(issueType: string): Promise<BillingCreditConfig | undefined>;
+  upsertBillingCreditConfig(data: InsertBillingCreditConfig): Promise<BillingCreditConfig>;
+
+  createBillingResolution(data: InsertBillingResolution): Promise<BillingResolution>;
+  getBillingResolution(id: number): Promise<BillingResolution | undefined>;
+  updateBillingResolution(id: number, data: Partial<InsertBillingResolution>): Promise<BillingResolution | undefined>;
+  getAllBillingResolutions(): Promise<BillingResolution[]>;
+  getBillingResolutionsByCustomer(customerEmail: string): Promise<BillingResolution[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -418,6 +428,56 @@ export class DatabaseStorage implements IStorage {
 
   async getExternalApiLogs(limit: number = 500): Promise<ExternalApiLog[]> {
     return db.select().from(externalApiLogs).orderBy(desc(externalApiLogs.createdAt)).limit(limit);
+  }
+
+  async getAllBillingCreditConfigs(): Promise<BillingCreditConfig[]> {
+    return db.select().from(billingCreditConfig).orderBy(billingCreditConfig.issueType);
+  }
+
+  async getBillingCreditConfig(issueType: string): Promise<BillingCreditConfig | undefined> {
+    const [config] = await db.select().from(billingCreditConfig).where(eq(billingCreditConfig.issueType, issueType));
+    return config || undefined;
+  }
+
+  async upsertBillingCreditConfig(data: InsertBillingCreditConfig): Promise<BillingCreditConfig> {
+    const existing = await this.getBillingCreditConfig(data.issueType);
+    if (existing) {
+      const [updated] = await db.update(billingCreditConfig)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(billingCreditConfig.issueType, data.issueType))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(billingCreditConfig).values(data).returning();
+    return created;
+  }
+
+  async createBillingResolution(data: InsertBillingResolution): Promise<BillingResolution> {
+    const [created] = await db.insert(billingResolutions).values(data).returning();
+    return created;
+  }
+
+  async getBillingResolution(id: number): Promise<BillingResolution | undefined> {
+    const [resolution] = await db.select().from(billingResolutions).where(eq(billingResolutions.id, id));
+    return resolution || undefined;
+  }
+
+  async updateBillingResolution(id: number, data: Partial<InsertBillingResolution>): Promise<BillingResolution | undefined> {
+    const [updated] = await db.update(billingResolutions)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(billingResolutions.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async getAllBillingResolutions(): Promise<BillingResolution[]> {
+    return db.select().from(billingResolutions).orderBy(desc(billingResolutions.createdAt));
+  }
+
+  async getBillingResolutionsByCustomer(customerEmail: string): Promise<BillingResolution[]> {
+    return db.select().from(billingResolutions)
+      .where(eq(billingResolutions.customerEmail, customerEmail))
+      .orderBy(desc(billingResolutions.createdAt));
   }
 }
 

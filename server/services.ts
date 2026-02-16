@@ -1748,6 +1748,24 @@ export async function changeSubscriptionPlan(
   }
 }
 
+export async function addPromotionalCredit(customerId: string, amountCents: number, description: string): Promise<{ success: boolean; creditId?: string; error?: string }> {
+  try {
+    const result = await chargebeeApiPost('/promotional_credits/add', {
+      'customer_id': customerId,
+      'amount': amountCents.toString(),
+      'description': description,
+      'currency_code': 'USD'
+    });
+    if (result?.promotional_credit) {
+      return { success: true, creditId: result.promotional_credit.id };
+    }
+    return { success: false, error: 'Failed to add promotional credit' };
+  } catch (error: any) {
+    console.error('Error adding promotional credit:', error);
+    return { success: false, error: error.message || 'Failed to add promotional credit' };
+  }
+}
+
 export interface ResumeDeviceResult {
   success: boolean;
   requestId?: string;

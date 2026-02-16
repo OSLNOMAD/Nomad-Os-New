@@ -6,7 +6,7 @@ import bcrypt from "bcryptjs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { storage } from "./storage";
-import { fetchCustomerFullData, fetchChargebeeCatalogItems, fetchChargebeeItemPrices, removeAddonFromSubscription, getSubscriptionCurrentItems, addTravelAddonToSubscription, addPrimeAddonToSubscription, verifySubscriptionOwnership, setApiLogContext, clearApiLogContext } from "./services";
+import { fetchCustomerFullData, fetchChargebeeCatalogItems, fetchChargebeeItemPrices, removeAddonFromSubscription, getSubscriptionCurrentItems, addTravelAddonToSubscription, addPrimeAddonToSubscription, verifySubscriptionOwnership, setApiLogContext, clearApiLogContext, addPromotionalCredit } from "./services";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -4675,7 +4675,544 @@ async function seedPortalSettings() {
       console.log(`Seeded portal setting: ${setting.key}`);
     }
   }
+
+  const defaultCreditConfigs = [
+    { issueType: "service_not_working", label: "My service wasn't working", creditType: "percentage", creditAmountCents: 0, creditPercentage: 25, maxCreditCents: 5000, description: "Service outage or quality issues - offers percentage of plan price as credit" },
+    { issueType: "incorrect_charge", label: "I was charged incorrectly", creditType: "fixed", creditAmountCents: 2000, creditPercentage: 0, description: "Double charge, overcharge, or billing error - offers fixed credit amount" },
+    { issueType: "cancelled_still_charged", label: "I cancelled but was still charged", creditType: "fixed", creditAmountCents: 0, creditPercentage: 0, description: "Escalation only - customer claims cancellation but still billed" },
+    { issueType: "equipment_return", label: "I returned equipment and want a refund", creditType: "fixed", creditAmountCents: 0, creditPercentage: 0, description: "Escalation only - customer claims equipment was returned" },
+    { issueType: "unhappy_with_service", label: "I'm unhappy with my service", creditType: "fixed", creditAmountCents: 2500, creditPercentage: 0, description: "General dissatisfaction - offers loyalty credit to retain customer" },
+    { issueType: "other_billing", label: "Other billing question", creditType: "fixed", creditAmountCents: 1500, creditPercentage: 0, description: "General billing inquiry - offers small goodwill credit" },
+  ];
+
+  for (const config of defaultCreditConfigs) {
+    const existing = await storage.getBillingCreditConfig(config.issueType);
+    if (!existing) {
+      await storage.upsertBillingCreditConfig({ ...config, enabled: true, updatedBy: "system" });
+      console.log(`Seeded billing credit config: ${config.issueType}`);
+    }
+  }
 }
+
+// ==================== BILLING RESOLUTION CENTER ====================
+
+app.get("/api/billing-resolution/config", async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (!token) return res.status(401).json({ error: "Not authenticated" });
+    const session = await storage.getSessionByToken(token);
+    if (!session) {
+      try { jwt.verify(token, JWT_SECRET); } catch { return res.status(401).json({ error: "Invalid token" }); }
+    }
+    const configs = await storage.getAllBillingCreditConfigs();
+    const enabledConfigs = configs.filter(c => c.enabled);
+    res.json({ configs: enabledConfigs.map(c => ({ issueType: c.issueType, label: c.label, description: c.description })) });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to get config" });
+  }
+});
+
+app.post("/api/billing-resolution/start", customerApiLimiter, async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (!token) return res.status(401).json({ error: "Not authenticated" });
+
+    const session = await storage.getSessionByToken(token);
+    let customerId: number | null = null;
+    let customerEmail = "";
+
+    if (session) {
+      customerId = session.customerId;
+      const customer = await storage.getCustomer(session.customerId);
+      customerEmail = customer?.email || "";
+    } else {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET) as any;
+        customerEmail = decoded.email || "";
+        customerId = decoded.customerId || null;
+      } catch { return res.status(401).json({ error: "Invalid token" }); }
+    }
+
+    const { issueType, issueDetails, subscriptionId } = req.body;
+    if (!issueType) return res.status(400).json({ error: "Issue type is required" });
+
+    const config = await storage.getBillingCreditConfig(issueType);
+    if (!config || !config.enabled) return res.status(400).json({ error: "This issue type is not available" });
+
+    const escalationTypes = ["cancelled_still_charged", "equipment_return"];
+    const isEscalation = escalationTypes.includes(issueType);
+
+    let chargebeeCustomerId: string | null = null;
+    let subscriptionStatus: string | null = null;
+    let subscriptionPrice: number | null = null;
+    let creditOfferCents = 0;
+
+    if (customerEmail) {
+      try {
+        setApiLogContext({ customerEmail, triggeredBy: "billing_resolution" });
+        const data = await fetchCustomerFullData(customerEmail);
+        clearApiLogContext();
+
+        if (data.chargebee?.customers?.length > 0) {
+          const cbCustomer = data.chargebee.customers[0];
+          chargebeeCustomerId = cbCustomer.id;
+
+          if (subscriptionId) {
+            const sub = cbCustomer.subscriptions.find((s: any) => s.id === subscriptionId);
+            if (sub) {
+              subscriptionStatus = sub.status;
+              subscriptionPrice = sub.planAmount;
+            }
+          } else if (cbCustomer.subscriptions.length > 0) {
+            const activeSub = cbCustomer.subscriptions.find((s: any) => s.status === "active") || cbCustomer.subscriptions[0];
+            subscriptionStatus = activeSub.status;
+            subscriptionPrice = activeSub.planAmount;
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching Chargebee data for billing resolution:", err);
+      }
+    }
+
+    if (!isEscalation && config.creditType === "fixed") {
+      creditOfferCents = config.creditAmountCents;
+    } else if (!isEscalation && config.creditType === "percentage" && subscriptionPrice) {
+      creditOfferCents = Math.round((subscriptionPrice * 100 * (config.creditPercentage || 0)) / 100);
+      if (config.maxCreditCents && creditOfferCents > config.maxCreditCents) {
+        creditOfferCents = config.maxCreditCents;
+      }
+    }
+
+    const resolution = await storage.createBillingResolution({
+      customerId,
+      customerEmail,
+      chargebeeCustomerId,
+      issueType,
+      issueDetails: issueDetails || null,
+      subscriptionId: subscriptionId || null,
+      subscriptionStatus,
+      subscriptionPrice: subscriptionPrice ? Math.round(subscriptionPrice * 100) : null,
+      creditOffered: isEscalation ? null : creditOfferCents,
+      creditType: isEscalation ? null : config.creditType,
+      outcome: isEscalation ? "escalation_pending" : "credit_offered",
+    });
+
+    res.json({
+      resolutionId: resolution.id,
+      isEscalation,
+      issueType,
+      creditOffer: isEscalation ? null : {
+        amountCents: creditOfferCents,
+        amountDisplay: `$${(creditOfferCents / 100).toFixed(2)}`,
+        type: config.creditType,
+        description: `Account credit of $${(creditOfferCents / 100).toFixed(2)} will be applied to your next billing cycle`
+      },
+      subscriptionStatus,
+      subscriptionPrice: subscriptionPrice ? `$${subscriptionPrice.toFixed(2)}` : null,
+    });
+  } catch (error: any) {
+    console.error("Billing resolution start error:", error);
+    res.status(500).json({ error: error.message || "Failed to start billing resolution" });
+  }
+});
+
+app.post("/api/billing-resolution/accept-credit", heavyApiLimiter, async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (!token) return res.status(401).json({ error: "Not authenticated" });
+
+    const session = await storage.getSessionByToken(token);
+    if (!session) {
+      try { jwt.verify(token, JWT_SECRET); } catch { return res.status(401).json({ error: "Invalid token" }); }
+    }
+
+    const { resolutionId } = req.body;
+    if (!resolutionId) return res.status(400).json({ error: "Resolution ID required" });
+
+    const resolution = await storage.getBillingResolution(resolutionId);
+    if (!resolution) return res.status(404).json({ error: "Resolution not found" });
+    if (resolution.outcome !== "credit_offered") return res.status(400).json({ error: "Credit offer no longer available" });
+
+    let creditApplied = false;
+    let chargebeeCreditId: string | null = null;
+
+    if (resolution.chargebeeCustomerId && resolution.creditOffered && resolution.creditOffered > 0) {
+      const creditResult = await addPromotionalCredit(
+        resolution.chargebeeCustomerId,
+        resolution.creditOffered,
+        `Portal Billing Resolution - ${resolution.issueType}: ${resolution.issueDetails || "Customer accepted credit offer"}`
+      );
+      if (creditResult.success) {
+        creditApplied = true;
+        chargebeeCreditId = creditResult.creditId || null;
+      } else {
+        console.error("Failed to apply Chargebee credit:", creditResult.error);
+      }
+    }
+
+    await storage.updateBillingResolution(resolutionId, {
+      outcome: creditApplied ? "credit_accepted" : "credit_failed",
+      creditApplied,
+      chargebeeCreditId,
+    });
+
+    if (creditApplied) {
+      res.json({
+        success: true,
+        message: `A credit of $${((resolution.creditOffered || 0) / 100).toFixed(2)} has been applied to your account. It will be automatically used on your next invoice.`
+      });
+    } else {
+      res.status(500).json({ error: "We were unable to apply the credit at this time. Please contact support." });
+    }
+  } catch (error: any) {
+    console.error("Accept credit error:", error);
+    res.status(500).json({ error: error.message || "Failed to accept credit" });
+  }
+});
+
+app.post("/api/billing-resolution/decline-credit", async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (!token) return res.status(401).json({ error: "Not authenticated" });
+
+    const session = await storage.getSessionByToken(token);
+    if (!session) {
+      try { jwt.verify(token, JWT_SECRET); } catch { return res.status(401).json({ error: "Invalid token" }); }
+    }
+
+    const { resolutionId } = req.body;
+    if (!resolutionId) return res.status(400).json({ error: "Resolution ID required" });
+
+    const resolution = await storage.getBillingResolution(resolutionId);
+    if (!resolution) return res.status(404).json({ error: "Resolution not found" });
+
+    await storage.updateBillingResolution(resolutionId, { outcome: "credit_declined" });
+
+    res.json({ success: true, resolutionId });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to decline credit" });
+  }
+});
+
+app.post("/api/billing-resolution/escalate", heavyApiLimiter, async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (!token) return res.status(401).json({ error: "Not authenticated" });
+
+    const session = await storage.getSessionByToken(token);
+    let customerId: number | null = null;
+    let customerEmail = "";
+    let customerName = "";
+
+    if (session) {
+      customerId = session.customerId;
+      const customer = await storage.getCustomer(session.customerId);
+      customerEmail = customer?.email || "";
+      customerName = customer?.fullName || customerEmail;
+    } else {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET) as any;
+        customerEmail = decoded.email || "";
+        customerId = decoded.customerId || null;
+        customerName = customerEmail;
+      } catch { return res.status(401).json({ error: "Invalid token" }); }
+    }
+
+    const { resolutionId, contactMethod, contactPhone, additionalNotes, proofFileData, proofFileName, trackingNumber } = req.body;
+    if (!resolutionId) return res.status(400).json({ error: "Resolution ID required" });
+
+    const resolution = await storage.getBillingResolution(resolutionId);
+    if (!resolution) return res.status(404).json({ error: "Resolution not found" });
+
+    const issueLabels: Record<string, string> = {
+      service_not_working: "Service Not Working / Quality Issue",
+      incorrect_charge: "Incorrect Charge / Overcharge",
+      cancelled_still_charged: "Cancelled But Still Being Charged",
+      equipment_return: "Equipment Return - Refund Request",
+      unhappy_with_service: "Unhappy With Service",
+      other_billing: "Other Billing Question",
+    };
+
+    let zendeskTicketId: string | null = null;
+    const zendeskSubdomain = process.env.ZENDESK_SUBDOMAIN;
+    const zendeskEmail = process.env.ZENDESK_EMAIL;
+    const zendeskToken = process.env.ZENDESK_API_TOKEN;
+
+    if (zendeskSubdomain && zendeskEmail && zendeskToken) {
+      try {
+        const groupIdSetting = await storage.getPortalSetting("zendesk_troubleshooting_group_id");
+        const groupId = groupIdSetting?.value || "41909825396372";
+
+        let ticketBody: string = `
+═══════════════════════════════════════
+BILLING RESOLUTION CENTER - ESCALATION
+═══════════════════════════════════════
+Issue Type: ${issueLabels[resolution.issueType] || resolution.issueType}
+Customer: ${customerName} (${customerEmail})
+Chargebee ID: ${resolution.chargebeeCustomerId || "N/A"}
+Subscription: ${resolution.subscriptionId || "N/A"}
+Subscription Status: ${resolution.subscriptionStatus || "N/A"}
+Subscription Price: ${resolution.subscriptionPrice ? `$${(resolution.subscriptionPrice / 100).toFixed(2)}` : "N/A"}`;
+
+        if (resolution.creditOffered && resolution.outcome === "credit_declined") {
+          ticketBody += `\n\nCredit Offered: $${(resolution.creditOffered / 100).toFixed(2)} - DECLINED by customer`;
+        }
+
+        if (resolution.issueType === "equipment_return") {
+          ticketBody += `\n\n═══════════════════════════════════════
+EQUIPMENT RETURN DETAILS
+═══════════════════════════════════════
+Tracking Number: ${trackingNumber || "Not provided"}
+Proof of Return: ${proofFileName ? `Attached - ${proofFileName}` : "Not provided"}`;
+        }
+
+        ticketBody += `\n\n═══════════════════════════════════════
+CUSTOMER'S DESCRIPTION
+═══════════════════════════════════════
+${resolution.issueDetails || "No details provided"}`;
+
+        if (additionalNotes) {
+          ticketBody += `\n\nAdditional Notes: ${additionalNotes}`;
+        }
+
+        ticketBody += `\n\n═══════════════════════════════════════
+CONTACT PREFERENCE
+═══════════════════════════════════════
+Preferred Contact: ${contactMethod === "phone" ? `Phone - ${contactPhone || "not provided"}` : "Email"}`;
+
+        ticketBody += `\n\n═══════════════════════════════════════
+ACTION REQUIRED: Review billing issue and respond to customer within 24 hours.`;
+
+        const zendeskTicketBody: any = {
+          ticket: {
+            subject: `[Billing Resolution] ${issueLabels[resolution.issueType] || resolution.issueType} - ${customerName}`,
+            comment: { body: ticketBody, public: false },
+            requester: { email: customerEmail, name: customerName },
+            group_id: parseInt(groupId),
+            priority: "normal",
+            tags: ["billing_resolution", "portal", resolution.issueType]
+          }
+        };
+
+        const zendeskResponse = await fetch(
+          `https://${zendeskSubdomain}.zendesk.com/api/v2/tickets.json`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": "Basic " + Buffer.from(`${zendeskEmail}/token:${zendeskToken}`).toString("base64")
+            },
+            body: JSON.stringify(zendeskTicketBody)
+          }
+        );
+
+        if (zendeskResponse.ok) {
+          const zendeskData = await zendeskResponse.json() as any;
+          zendeskTicketId = zendeskData.ticket?.id?.toString();
+          console.log("Billing resolution Zendesk ticket created:", zendeskTicketId);
+
+          if (proofFileData && proofFileName && zendeskTicketId) {
+            try {
+              const uploadUrl = `https://${zendeskSubdomain}.zendesk.com/api/v2/uploads.json?filename=${encodeURIComponent(proofFileName)}`;
+              const fileBuffer = Buffer.from(proofFileData.split(",").pop() || "", "base64");
+              const uploadRes = await fetch(uploadUrl, {
+                method: "POST",
+                headers: {
+                  "Authorization": "Basic " + Buffer.from(`${zendeskEmail}/token:${zendeskToken}`).toString("base64"),
+                  "Content-Type": "application/binary"
+                },
+                body: fileBuffer
+              });
+              if (uploadRes.ok) {
+                const uploadData = await uploadRes.json() as any;
+                const uploadToken = uploadData.upload?.token;
+                if (uploadToken) {
+                  await fetch(
+                    `https://${zendeskSubdomain}.zendesk.com/api/v2/tickets/${zendeskTicketId}.json`,
+                    {
+                      method: "PUT",
+                      headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": "Basic " + Buffer.from(`${zendeskEmail}/token:${zendeskToken}`).toString("base64")
+                      },
+                      body: JSON.stringify({
+                        ticket: {
+                          comment: {
+                            body: `Proof of return attached: ${proofFileName}`,
+                            public: false,
+                            uploads: [uploadToken]
+                          }
+                        }
+                      })
+                    }
+                  );
+                }
+              }
+            } catch (uploadErr) {
+              console.error("Failed to upload proof to Zendesk:", uploadErr);
+            }
+          }
+        } else {
+          console.error("Zendesk ticket creation failed:", await zendeskResponse.text());
+        }
+      } catch (zendeskError) {
+        console.error("Zendesk API error:", zendeskError);
+      }
+    }
+
+    const slackToken = process.env.SLACK_BOT_TOKEN;
+    if (slackToken) {
+      try {
+        await fetch("https://slack.com/api/chat.postMessage", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${slackToken}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            channel: "#billing-resolutions",
+            text: `Billing Resolution Escalation`,
+            blocks: [
+              { type: "header", text: { type: "plain_text", text: "Billing Resolution Escalated" } },
+              { type: "section", fields: [
+                { type: "mrkdwn", text: `*Customer:*\n${customerName}` },
+                { type: "mrkdwn", text: `*Email:*\n${customerEmail}` },
+                { type: "mrkdwn", text: `*Issue:*\n${issueLabels[resolution.issueType] || resolution.issueType}` },
+                { type: "mrkdwn", text: `*Zendesk:*\n${zendeskTicketId ? `<https://${zendeskSubdomain}.zendesk.com/agent/tickets/${zendeskTicketId}|#${zendeskTicketId}>` : "Failed"}` },
+              ]},
+              ...(resolution.creditOffered && resolution.outcome === "credit_declined" ? [
+                { type: "section", text: { type: "mrkdwn", text: `Credit of $${(resolution.creditOffered / 100).toFixed(2)} was offered but *declined* by customer.` } }
+              ] : []),
+            ]
+          })
+        });
+      } catch (slackErr) {
+        console.error("Slack notification error:", slackErr);
+      }
+    }
+
+    await storage.updateBillingResolution(resolutionId, {
+      outcome: "escalated",
+      zendeskTicketId,
+      contactMethod: contactMethod || null,
+      contactPhone: contactPhone || null,
+      additionalNotes: additionalNotes || null,
+      proofFileName: proofFileName || null,
+      trackingNumber: trackingNumber || null,
+    });
+
+    res.json({
+      success: true,
+      ticketId: zendeskTicketId || `BR-${Date.now().toString(36).toUpperCase()}`,
+      message: "Your billing issue has been escalated to our support team. We'll reach out within 24 hours."
+    });
+  } catch (error: any) {
+    console.error("Billing resolution escalate error:", error);
+    res.status(500).json({ error: error.message || "Failed to escalate" });
+  }
+});
+
+app.get("/api/billing-resolution/history", async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (!token) return res.status(401).json({ error: "Not authenticated" });
+
+    const session = await storage.getSessionByToken(token);
+    let customerEmail = "";
+    if (session) {
+      const customer = await storage.getCustomer(session.customerId);
+      customerEmail = customer?.email || "";
+    } else {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET) as any;
+        customerEmail = decoded.email || "";
+      } catch { return res.status(401).json({ error: "Invalid token" }); }
+    }
+
+    const resolutions = await storage.getBillingResolutionsByCustomer(customerEmail);
+    res.json({ resolutions });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to get history" });
+  }
+});
+
+// Admin billing resolution endpoints
+app.get("/api/admin/billing-resolutions", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
+    const token = authHeader.split(" ")[1];
+    try { jwt.verify(token, JWT_SECRET); } catch { return res.status(401).json({ error: "Invalid token" }); }
+
+    const resolutions = await storage.getAllBillingResolutions();
+    res.json({ resolutions });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to get resolutions" });
+  }
+});
+
+app.get("/api/admin/billing-credit-config", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
+    const token = authHeader.split(" ")[1];
+    try { jwt.verify(token, JWT_SECRET); } catch { return res.status(401).json({ error: "Invalid token" }); }
+
+    const configs = await storage.getAllBillingCreditConfigs();
+    res.json({ configs });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to get credit configs" });
+  }
+});
+
+app.post("/api/admin/billing-credit-config", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
+    const token = authHeader.split(" ")[1];
+    const decoded = jwt.verify(token, JWT_SECRET) as any;
+
+    const { issueType, label, creditType, creditAmountCents, creditPercentage, maxCreditCents, enabled, description } = req.body;
+    if (!issueType || !label) return res.status(400).json({ error: "Issue type and label required" });
+
+    const config = await storage.upsertBillingCreditConfig({
+      issueType,
+      label,
+      creditType: creditType || "fixed",
+      creditAmountCents: creditAmountCents || 0,
+      creditPercentage: creditPercentage || 0,
+      maxCreditCents: maxCreditCents || null,
+      enabled: enabled !== false,
+      description: description || null,
+      updatedBy: decoded.email || "admin",
+    });
+
+    res.json({ config });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to update credit config" });
+  }
+});
+
+app.get("/api/admin/billing-resolutions/export", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
+    const token = authHeader.split(" ")[1];
+    try { jwt.verify(token, JWT_SECRET); } catch { return res.status(401).json({ error: "Invalid token" }); }
+
+    const resolutions = await storage.getAllBillingResolutions();
+    const csvHeader = "ID,Date,Email,Issue Type,Subscription Status,Credit Offered,Outcome,Zendesk Ticket,Contact Method\n";
+    const csvRows = resolutions.map(r =>
+      `${r.id},${r.createdAt?.toISOString()?.split("T")[0] || ""},${r.customerEmail},${r.issueType},${r.subscriptionStatus || ""},${r.creditOffered ? (r.creditOffered / 100).toFixed(2) : ""},${r.outcome},${r.zendeskTicketId || ""},${r.contactMethod || ""}`
+    ).join("\n");
+
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", "attachment; filename=billing_resolutions.csv");
+    res.send(csvHeader + csvRows);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to export" });
+  }
+});
 
 app.get("/api/subscription/addons/available", customerApiLimiter, async (req, res) => {
   try {
