@@ -1,0 +1,182 @@
+{
+  "total_tickets_analyzed": 1236,
+  "analysis_date": "2026-02-16T16:54:02.375Z",
+  "categories": {
+    "General Billing Inquiry": {
+      "count": 556,
+      "percentage": "45.0%",
+      "sample_subjects": [
+        "Conversation with Derrick Winston",
+        "Conversation with Good morning could you please keep my Internet on till the 19 I will get paid about 1 pm central time.",
+        "Re: Your subscription is about to resume",
+        "Re: [Nomad Internet] Re: Escalate to Zendesk",
+        "Re: Your subscription is about to resume"
+      ]
+    },
+    "Past Due / Collections": {
+      "count": 262,
+      "percentage": "21.2%",
+      "sample_subjects": [
+        "Re: 🚨 Oops! Your Payment’s Overdue – Let’s Sort It Out!",
+        "Re: Immediate Attention Needed — Help Is Available",
+        "Re: Time-Sensitive: Please Update Your Payment",
+        "Re: Immediate Attention Needed — Help Is Available",
+        "Re: Collections: [OVERDUE] Payment Reminder from Nomad Internet"
+      ]
+    },
+    "Refund Request": {
+      "count": 235,
+      "percentage": "19.0%",
+      "sample_subjects": [
+        "Refund",
+        "My money",
+        "Re: Your Nomad Internet Subscription Is Paused — We’re Here When You’re Ready",
+        "Re: [Nomad Internet] Re: Re: [Nomad Internet] Re: Refund",
+        "Re: Notice from Nomad Internet for Potential Login Disablement for Unpaid Account"
+      ]
+    },
+    "Invoice / Receipt Request": {
+      "count": 175,
+      "percentage": "14.2%",
+      "sample_subjects": [
+        "Re: Your Nomad Internet Subscription Is Paused — We’re Here When You’re Ready",
+        "Re: Your Invoice",
+        "Request for Complete Invoice History",
+        "Re: Just Checking In — We’re Here to Help With Your Payment",
+        "Kimberly Berkshire Account"
+      ]
+    },
+    "Billing Cycle / Renewal Date Issues": {
+      "count": 151,
+      "percentage": "12.2%",
+      "sample_subjects": [
+        "Request for Complete Invoice History",
+        "Cancellation of service at end of the current billing.",
+        "Re: Collections: [OVERDUE] Payment Reminder from Nomad Internet",
+        "Re: Your Invoice",
+        "Re: Collections: [OVERDUE] Payment Reminder from Nomad Internet"
+      ]
+    },
+    "Autopay / Payment Method Issues": {
+      "count": 107,
+      "percentage": "8.7%",
+      "sample_subjects": [
+        "Re: Time-Sensitive: Please Update Your Payment",
+        "Re: Time-Sensitive: Please Update Your Payment",
+        "Re: Time-Sensitive: Please Update Your Payment",
+        "Re: [OVERDUE] Payment Reminder from Nomad Internet",
+        "Re: Time-Sensitive: Please Update Your Payment"
+      ]
+    },
+    "Credit / Account Balance": {
+      "count": 100,
+      "percentage": "8.1%",
+      "sample_subjects": [
+        "Re: [IMPORTANT] Payment Reminder from Nomad Internet (Collections)",
+        "Re: Just a Friendly Reminder About Your Nomad Subscription",
+        "Hey I never received a modem cause y'all sent it …",
+        "Re: 😬 Uh-oh, Looks Like a Payment Was Missed – Let’s Get It Sorted!",
+        "Re: [IMPORTANT] Payment Reminder from Nomad Internet (Collections)"
+      ]
+    },
+    "Service Not Received But Charged": {
+      "count": 64,
+      "percentage": "5.2%",
+      "sample_subjects": [
+        "Re: Your Invoice",
+        "Re: Immediate Attention Needed — Help Is Available",
+        "Re: Time-Sensitive: Please Update Your Payment",
+        "Re: Immediate Attention Needed — Help Is Available",
+        "Re: Collections: [OVERDUE] Payment Reminder from Nomad Internet"
+      ]
+    },
+    "Unauthorized Charge / Fraud": {
+      "count": 53,
+      "percentage": "4.3%",
+      "sample_subjects": [
+        "Re: Just a Quick Heads-Up — We’re Here to Help",
+        "Re: [OVERDUE] Payment Reminder from Nomad Internet",
+        "Re: [Nomad Internet] Re: Re: Your subscription has been resumed",
+        "Re: Action Required: Payment Issue for Nomad Internet",
+        "Re: [Nomad Internet] Re: Charges on my credit card"
+      ]
+    },
+    "Cancellation & Still Being Charged": {
+      "count": 48,
+      "percentage": "3.9%",
+      "sample_subjects": [
+        "Re: Your Invoice",
+        "Re: [Nomad Internet] Re: New customer message on February 3, 2026 at 5:40 pm",
+        "Kaitlin Terry",
+        "Re: Just a Heads-Up — Your Nomad Payment Is Due in 3 Days",
+        "Re: Collections: [OVERDUE] Payment Reminder from Nomad Internet"
+      ]
+    },
+    "Double Charged / Overcharged": {
+      "count": 30,
+      "percentage": "2.4%",
+      "sample_subjects": [
+        "Hello",
+        "Re: [OVERDUE] Payment Reminder from Nomad Internet",
+        "Fw: Action Required: Payment Issue for Nomad Internet",
+        "OVERCHARGED MY ACCOUNT",
+        "Re: [Nomad Internet] Re: Re: Your Nomad Internet Subscription Is Paused — We’re Here When You’re Ready"
+      ]
+    },
+    "Payment Failed / Card Declined": {
+      "count": 9,
+      "percentage": "0.7%",
+      "sample_subjects": [
+        "cancellation request ",
+        "Re: Final Notice from Nomad Internet for Collections",
+        "Re: Action Required: Payment Issue for Nomad Internet",
+        "Re: [IMPORTANT] Payment Reminder from Nomad Internet (Collections)",
+        "Re: Action Required: Payment Issue for Nomad Internet"
+      ]
+    },
+    "Subscription Price / Plan Dispute": {
+      "count": 6,
+      "percentage": "0.5%",
+      "sample_subjects": [
+        "Re: Just a Friendly Reminder About Your Nomad Subscription",
+        "billing",
+        "Conversation with I cancelled service and returned the modem over a year ago and am still being charged a monthly fee",
+        "Re: Thinking About Wireless Internet? Let’s Talk",
+        "Follow up on your plan Inquiries"
+      ]
+    }
+  },
+  "status_distribution": {
+    "pending": 119,
+    "solved": 106,
+    "closed": 920,
+    "open": 83,
+    "new": 8
+  },
+  "top_tags": {
+    "channel_email": 761,
+    "nomad": 541,
+    "collections": 515,
+    "team_collections": 512,
+    "reason_billings": 419,
+    "reason_cancellation": 332,
+    "portal": 240,
+    "general": 234,
+    "team_tier1_support": 232,
+    "refund": 135,
+    "closed_by_merge": 118,
+    "verizon": 118,
+    "intent__billing__subscription_cancel__request": 103,
+    "lead": 90,
+    "cancellations": 85,
+    "reason_service_outage": 82,
+    "reason_activation": 68,
+    "reason_return": 54,
+    "order": 44,
+    "intent__billing__checkout__issue": 39
+  },
+  "monthly_trend": {
+    "2026-02": 822,
+    "2026-01": 414
+  }
+}
