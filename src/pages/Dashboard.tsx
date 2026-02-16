@@ -8,6 +8,7 @@ import { PlanChangeModal } from '../components/PlanChangeModal'
 import { ManageAddonsModal } from '../components/ManageAddonsModal'
 import { getPlanDisplayName } from '../utils/planNames'
 import BillingResolutionCenter from '../components/BillingResolutionCenter'
+import ServiceIssueCenter from '../components/ServiceIssueCenter'
 import { isPlanChangeEligible, getPlanChangeOptions, PLAN_DESCRIPTIONS } from '../../shared/planChangeConfig'
 import { AVAILABLE_ADDONS, isAddonInFamily } from '../../shared/addonConfig'
 
@@ -222,7 +223,7 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingData, setIsLoadingData] = useState(true)
   const [showDropdown, setShowDropdown] = useState(false)
-  const [activeTab, setActiveTab] = useState<'overview' | 'subscriptions' | 'orders' | 'invoices' | 'internet' | 'billing_help'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'subscriptions' | 'orders' | 'invoices' | 'internet' | 'billing_help' | 'service_issues'>('overview')
   const [authToken, setAuthToken] = useState<string | null>(null)
   const [selectedSubscription, setSelectedSubscription] = useState<SubscriptionDetail | null>(null)
   const [paymentLoading, setPaymentLoading] = useState<string | null>(null)
@@ -646,6 +647,7 @@ void collectibleInvoices.length
               { key: 'invoices', label: 'Invoices', icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg> },
               { key: 'internet', label: 'Internet', icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.14 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" /></svg> },
               { key: 'billing_help', label: 'Billing Help', icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
+              { key: 'service_issues', label: 'Service Issues', icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.268 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg> },
             ].map((tab) => (
               <button
                 key={tab.key}
@@ -2125,6 +2127,10 @@ void collectibleInvoices.length
 
             {activeTab === 'billing_help' && authToken && (
               <BillingResolutionCenter authToken={authToken} />
+            )}
+
+            {activeTab === 'service_issues' && authToken && (
+              <ServiceIssueCenter authToken={authToken} />
             )}
           </>
         )}

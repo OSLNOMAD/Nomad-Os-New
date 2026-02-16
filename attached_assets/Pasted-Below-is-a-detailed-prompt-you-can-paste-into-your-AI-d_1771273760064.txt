@@ -1,0 +1,288 @@
+Below is a **detailed prompt** you can paste into your AI/dev-builder to create this feature properly (not the useless “what happened? ok continue” junk).
+
+---
+
+## Detailed Prompt: “Service Issue Intake + Downtime Credit Engine” (Customer Portal + Agent/Admin Portal)
+
+You are building a guided, agent-friendly feature for Nomad Internet that handles **service issue reporting** and **downtime credit requests**. The experience must reduce back-and-forth, capture timestamps and proof, route to troubleshooting when appropriate, and automatically calculate and apply credits using Chargebee data, while enforcing policy rules (especially for slow speeds).
+
+### 1) Feature Goal
+
+Create a structured workflow that:
+
+* Helps customers report issues accurately (not vague “internet didn’t work”).
+* Helps agents resolve issues faster by collecting the right info upfront.
+* Prevents abuse and duplicate credits.
+* Integrates with existing troubleshooting ticket workflows.
+* Calculates **eligible downtime credit** using Chargebee invoice/subscription data.
+* Enforces Terms of Service: **slow speeds are not eligible for downtime credit**.
+* Allows a controlled “goodwill” credit for slow-speed complaints ($10 with cooldown).
+
+### 2) Entry Points
+
+Implement as:
+
+* **Customer Portal module:** “Report a Service Issue” + “Request Downtime Credit”
+* **Admin/Agent Portal module:** “Downtime Credit Review” + “Troubleshooting Intake”
+* Both should use the same backend decision engine and logging.
+
+### 3) High-Level Flow (Decision Tree)
+
+Start with a required question:
+
+**Q1: What issue are you experiencing?**
+
+* Option A: **Service not working at all (No Connection)**
+* Option B: **Slow speeds / poor performance**
+* Option C: **Other (force user to describe, but still route into A/B with follow-up)**
+
+---
+
+## A) Service Not Working at All (No Connection)
+
+### A1: Is the issue still happening right now?
+
+* Yes → “Active outage”
+* No → “Resolved outage”
+
+#### A1-YES (Active Outage)
+
+**Goal:** route into troubleshooting first, not credit.
+
+Ask:
+
+1. **When did the issue start?**
+
+   * Date/time picker + “I’m not sure” option.
+   * If “I’m not sure,” ask for best estimate: “today / yesterday / last week” then request approximate time.
+2. **Is this happening in one location or everywhere you travel?**
+
+   * One location
+   * Multiple locations
+3. **Do you want to troubleshoot now or submit a ticket?**
+
+   * “Start troubleshooting now”
+   * “Submit ticket”
+
+**Rules:**
+
+* If start date is **today** (or within the last ~24 hours), do **not** offer downtime credit. Show:
+
+  * “We need to get service restored first. Once resolved, you can request downtime credit with exact dates/times.”
+
+**Ticket Handling:**
+
+* Check if customer already has an **open troubleshooting ticket** for this issue.
+
+  * If yes:
+
+    * If ticket age < 24 hours: show “You already have an open ticket. Our team will reach out via email/call.”
+    * If ticket age ≥ 24 hours: allow them to add info to the same ticket (append) instead of creating a duplicate.
+  * If no: submit a new troubleshooting ticket using the existing workflow.
+
+**Troubleshooting Flow Integration:**
+
+* Launch the existing “Internet Troubleshooting” guided flow.
+* At the end: submit ticket with all collected info and logs.
+
+#### A1-NO (Resolved Outage)
+
+**Goal:** collect evidence + calculate downtime credit.
+
+Ask:
+
+1. **What dates/times was the service down?**
+
+   * Start date/time (required)
+   * End date/time (required)
+   * Timezone detection + manual override
+2. **How did it impact you?**
+
+   * Work interruption
+   * Streaming/gaming
+   * Other (free text)
+3. **Did you contact support during the outage?**
+
+   * Yes (call/email/chat) → capture approximate time + method + any ticket/reference number
+   * No
+4. **Upload proof (optional but strongly encouraged):**
+
+   * Attachment upload (screenshots, speed tests, logs, emails, call screenshots, etc.)
+   * Also allow free-text “history/details”
+
+**Then:**
+
+* Confirm: “When was the issue fully resolved?”
+* Require resolution date/time (end time).
+
+---
+
+## B) Slow Speeds / Poor Performance
+
+### B1: Confirm slow speed case details
+
+Ask:
+
+1. Is it happening **right now**?
+2. Is it **all day** or **specific times**?
+3. What is your primary use case impacted (Zoom/work, streaming, gaming)?
+4. Ask for optional proof:
+
+   * Speedtest screenshot
+   * Device screenshot
+   * Time range of slow speed
+
+### B2: Policy enforcement (Terms of Service)
+
+Display in simple language:
+
+* Nomad does not guarantee minimum speeds. Speeds vary based on coverage, congestion, tower conditions, weather, maintenance, etc.
+* Therefore: **Downtime credit is not eligible for slow speed cases**.
+
+### B3: Goodwill credit logic ($10)
+
+Offer:
+
+* “We can apply a **one-time $10 goodwill credit** for the inconvenience.”
+
+**Cooldown rule:**
+
+* If goodwill credit was already issued within the last **60 days**, do not offer again.
+* If customer asks again within 60 days, show:
+
+  * “We already applied a goodwill credit recently, so we can’t apply another at this time.”
+
+---
+
+# 4) Downtime Credit Calculation (Resolved No-Connection Only)
+
+### Data Sources
+
+When resolved outage flow is completed:
+
+* Fetch from Chargebee:
+
+  * Subscription ID
+  * Current plan/price
+  * Last invoice ID + invoice total
+  * Invoice period start/end dates
+  * Term length (days)
+* Also store customer’s reported outage start/end timestamps.
+
+### Calculation Algorithm
+
+Compute:
+
+1. **Outage duration** in hours/days (end-start, using timezone-aware parsing).
+2. **Billing term days** from invoice period.
+3. **Prorated impact amount**:
+
+   * `prorated = invoice_total * (outage_days / term_days)`
+4. **Auto-credit cap policy**:
+
+   * Default max instant credit = **50% of invoice_total**
+5. **Recommended credit offer**:
+
+   * `recommended_credit = min(prorated, invoice_total * 0.50)`
+
+### Offer Presentation
+
+In the UI (customer + agent side):
+
+* Show “We can apply **50% credit immediately** up to $X” (based on calculated cap).
+* Provide selectable options:
+
+  * 25%
+  * 50% (default)
+  * Custom amount (agent only) within allowed cap
+* If customer requests more than allowed:
+
+  * Mark as **Escalation Required** (no auto-credit)
+  * Capture justification and route to supervisor/billing queue.
+
+---
+
+# 5) Duplicate/Abuse Prevention Rules (Critical)
+
+### Downtime credit cooldown
+
+* If the customer received a downtime credit within the last **30 days**:
+
+  * Do not auto-credit again.
+  * Ask: “Is this request for a different outage period?”
+  * If yes and it’s a different date range → **escalate**.
+  * If no → deny and show prior credit details.
+
+### Goodwill credit cooldown (slow speeds)
+
+* If $10 goodwill was applied within last **60 days**, block and show explanation.
+
+### Ticket duplication prevention
+
+* If there is already an open troubleshooting ticket for the same customer:
+
+  * Append new info instead of creating a new ticket.
+
+---
+
+# 6) Logging + Audit Trail (Must-Have)
+
+Log everything to your database for agent visibility and policy enforcement:
+
+* customer_id, subscription_id, invoice_id
+* issue_type: `no_connection` | `slow_speeds` | `other`
+* status: `active_outage` | `resolved_outage` | `ticket_submitted` | `credit_applied` | `denied` | `escalated`
+* outage_start, outage_end, timezone
+* proof_attachments (URLs/IDs)
+* prior_ticket_id (if any)
+* credit_type: `downtime` | `goodwill`
+* credit_amount, credit_reason
+* agent_id (if agent portal)
+* created_at, updated_at
+
+---
+
+# 7) Agent/Admin Portal UX Requirements
+
+Agents should not “interpret” the case manually. The UI must show:
+
+* Clear classification: No Connection vs Slow Speeds
+* A timeline summary (start/end, duration, reported resolution)
+* Proof attachments inline
+* Chargebee invoice details (last invoice total, period)
+* Computed recommended credit + cap
+* “Apply Credit” button (if eligible and within rules)
+* “Escalate” button (if request exceeds cap or violates cooldown)
+* “Append to Existing Ticket” shortcut when applicable
+
+---
+
+# 8) Customer-Facing Messaging Rules
+
+* If issue is still happening: “We must restore service first. Please complete troubleshooting / submit ticket. Once resolved, you can request downtime credit.”
+* If slow speeds: “Speed is not guaranteed under Terms of Service, so downtime credit isn’t eligible. We can apply a one-time $10 goodwill credit (subject to cooldown).”
+* If duplicate credit attempt: show last credit date/amount and explain cooldown.
+
+---
+
+# 9) Integrations Needed (Backend)
+
+* Chargebee: fetch subscription + latest invoice + create/apply credit note / promotional credit (whatever your internal method is).
+* Ticketing workflow: create or append troubleshooting ticket.
+* File storage: upload attachments (proof).
+
+---
+
+# 10) Output Requirements
+
+Deliver:
+
+1. Full UI flow (Customer + Agent/Admin)
+2. Decision engine with eligibility rules
+3. Database schema for logs
+4. API endpoints required (fetch invoice, submit ticket, apply credit, check cooldown)
+5. Exact text copy for each UI step and system message
+
+---
+
+If you paste this into your builder, it should produce a real system instead of a glorified “Tell us your feelings” form.

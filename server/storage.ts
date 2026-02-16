@@ -1,4 +1,4 @@
-import { customers, otpCodes, sessions, escalationTickets, customerFeedback, slowSpeedSessions, adminUsers, portalSettings, cancellationRequests, subscriptionPauses, planChangeVerifications, addonLogs, externalApiLogs, billingCreditConfig, billingResolutions, type Customer, type InsertCustomer, type OtpCode, type InsertOtpCode, type Session, type InsertSession, type EscalationTicket, type InsertEscalationTicket, type CustomerFeedback, type InsertCustomerFeedback, type SlowSpeedSession, type InsertSlowSpeedSession, type AdminUser, type InsertAdminUser, type PortalSetting, type InsertPortalSetting, type CancellationRequest, type InsertCancellationRequest, type SubscriptionPause, type InsertSubscriptionPause, type PlanChangeVerification, type InsertPlanChangeVerification, type AddonLog, type InsertAddonLog, type ExternalApiLog, type InsertExternalApiLog, type BillingCreditConfig, type InsertBillingCreditConfig, type BillingResolution, type InsertBillingResolution } from "../shared/schema";
+import { customers, otpCodes, sessions, escalationTickets, customerFeedback, slowSpeedSessions, adminUsers, portalSettings, cancellationRequests, subscriptionPauses, planChangeVerifications, addonLogs, externalApiLogs, billingCreditConfig, billingResolutions, serviceIssueReports, type Customer, type InsertCustomer, type OtpCode, type InsertOtpCode, type Session, type InsertSession, type EscalationTicket, type InsertEscalationTicket, type CustomerFeedback, type InsertCustomerFeedback, type SlowSpeedSession, type InsertSlowSpeedSession, type AdminUser, type InsertAdminUser, type PortalSetting, type InsertPortalSetting, type CancellationRequest, type InsertCancellationRequest, type SubscriptionPause, type InsertSubscriptionPause, type PlanChangeVerification, type InsertPlanChangeVerification, type AddonLog, type InsertAddonLog, type ExternalApiLog, type InsertExternalApiLog, type BillingCreditConfig, type InsertBillingCreditConfig, type BillingResolution, type InsertBillingResolution, type ServiceIssueReport, type InsertServiceIssueReport } from "../shared/schema";
 import { db } from "./db";
 import { eq, and, gt, or, desc } from "drizzle-orm";
 
@@ -71,6 +71,14 @@ export interface IStorage {
   updateBillingResolution(id: number, data: Partial<InsertBillingResolution>): Promise<BillingResolution | undefined>;
   getAllBillingResolutions(): Promise<BillingResolution[]>;
   getBillingResolutionsByCustomer(customerEmail: string): Promise<BillingResolution[]>;
+
+  createServiceIssueReport(data: InsertServiceIssueReport): Promise<ServiceIssueReport>;
+  getServiceIssueReport(id: number): Promise<ServiceIssueReport | undefined>;
+  updateServiceIssueReport(id: number, data: Partial<InsertServiceIssueReport>): Promise<ServiceIssueReport | undefined>;
+  getAllServiceIssueReports(): Promise<ServiceIssueReport[]>;
+  getServiceIssuesByCustomer(customerEmail: string): Promise<ServiceIssueReport[]>;
+  getRecentDowntimeCredit(customerEmail: string, daysBack: number): Promise<ServiceIssueReport | undefined>;
+  getRecentGoodwillCredit(customerEmail: string, daysBack: number): Promise<ServiceIssueReport | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -478,6 +486,64 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(billingResolutions)
       .where(eq(billingResolutions.customerEmail, customerEmail))
       .orderBy(desc(billingResolutions.createdAt));
+  }
+
+  async createServiceIssueReport(data: InsertServiceIssueReport): Promise<ServiceIssueReport> {
+    const [created] = await db.insert(serviceIssueReports).values(data).returning();
+    return created;
+  }
+
+  async getServiceIssueReport(id: number): Promise<ServiceIssueReport | undefined> {
+    const [report] = await db.select().from(serviceIssueReports).where(eq(serviceIssueReports.id, id));
+    return report || undefined;
+  }
+
+  async updateServiceIssueReport(id: number, data: Partial<InsertServiceIssueReport>): Promise<ServiceIssueReport | undefined> {
+    const [updated] = await db.update(serviceIssueReports)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(serviceIssueReports.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async getAllServiceIssueReports(): Promise<ServiceIssueReport[]> {
+    return db.select().from(serviceIssueReports).orderBy(desc(serviceIssueReports.createdAt));
+  }
+
+  async getServiceIssuesByCustomer(customerEmail: string): Promise<ServiceIssueReport[]> {
+    return db.select().from(serviceIssueReports)
+      .where(eq(serviceIssueReports.customerEmail, customerEmail))
+      .orderBy(desc(serviceIssueReports.createdAt));
+  }
+
+  async getRecentDowntimeCredit(customerEmail: string, daysBack: number): Promise<ServiceIssueReport | undefined> {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - daysBack);
+    const results = await db.select().from(serviceIssueReports)
+      .where(and(
+        eq(serviceIssueReports.customerEmail, customerEmail),
+        eq(serviceIssueReports.creditType, "downtime"),
+        eq(serviceIssueReports.creditApplied, true),
+        gt(serviceIssueReports.createdAt, cutoff)
+      ))
+      .orderBy(desc(serviceIssueReports.createdAt))
+      .limit(1);
+    return results[0] || undefined;
+  }
+
+  async getRecentGoodwillCredit(customerEmail: string, daysBack: number): Promise<ServiceIssueReport | undefined> {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - daysBack);
+    const results = await db.select().from(serviceIssueReports)
+      .where(and(
+        eq(serviceIssueReports.customerEmail, customerEmail),
+        eq(serviceIssueReports.creditType, "goodwill"),
+        eq(serviceIssueReports.creditApplied, true),
+        gt(serviceIssueReports.createdAt, cutoff)
+      ))
+      .orderBy(desc(serviceIssueReports.createdAt))
+      .limit(1);
+    return results[0] || undefined;
   }
 }
 

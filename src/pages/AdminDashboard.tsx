@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { BillingResolutionsAdmin } from '../components/BillingResolutionsAdmin'
+import { ServiceIssuesAdmin } from '../components/ServiceIssuesAdmin'
 
 interface Feedback {
   id: number
@@ -129,7 +130,7 @@ export default function AdminDashboard() {
   const [responseText, setResponseText] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [filter, setFilter] = useState<'all' | 'pending' | 'responded'>('all')
-  const [activeTab, setActiveTab] = useState<'feedback' | 'cancellations' | 'pause_logs' | 'plan_changes' | 'addon_logs' | 'api_logs' | 'payment_analysis' | 'billing_resolutions' | 'settings'>('feedback')
+  const [activeTab, setActiveTab] = useState<'feedback' | 'cancellations' | 'pause_logs' | 'plan_changes' | 'addon_logs' | 'api_logs' | 'payment_analysis' | 'billing_resolutions' | 'service_issues' | 'settings'>('feedback')
   const [settings, setSettings] = useState<PortalSetting[]>([])
   const [settingsLoading, setSettingsLoading] = useState(false)
   const [slackChannelId, setSlackChannelId] = useState('')
@@ -957,6 +958,17 @@ export default function AdminDashboard() {
             style={activeTab === 'billing_resolutions' ? { borderColor: '#10a37f', color: '#10a37f' } : {}}
           >
             Billing Resolutions
+          </button>
+          <button
+            onClick={() => setActiveTab('service_issues')}
+            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'service_issues'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
+            style={activeTab === 'service_issues' ? { borderColor: '#10a37f', color: '#10a37f' } : {}}
+          >
+            Service Issues
           </button>
           <button
             onClick={() => setActiveTab('settings')}
@@ -1802,6 +1814,10 @@ export default function AdminDashboard() {
 
         {activeTab === 'billing_resolutions' && (
           <BillingResolutionsAdmin token={localStorage.getItem('admin_token') || ''} />
+        )}
+
+        {activeTab === 'service_issues' && (
+          <ServiceIssuesAdmin token={localStorage.getItem('admin_token') || ''} />
         )}
 
         {activeTab === 'settings' && (

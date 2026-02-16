@@ -5140,6 +5140,557 @@ app.get("/api/billing-resolution/history", async (req, res) => {
   }
 });
 
+// ==================== SERVICE ISSUE INTAKE + DOWNTIME CREDIT ENGINE ====================
+
+async function resolveCustomerFromToken(token: string): Promise<{ customerId: number | null; customerEmail: string } | null> {
+  const session = await storage.getSessionByToken(token);
+  if (session) {
+    const customer = await storage.getCustomer(session.customerId);
+    return { customerId: session.customerId, customerEmail: customer?.email || "" };
+  }
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET!) as any;
+    const email = decoded.email || "";
+    const decodedId = decoded.customerId;
+    let customerId: number | null = null;
+    if (decodedId && decodedId > 0) {
+      const exists = await storage.getCustomer(decodedId);
+      customerId = exists ? decodedId : null;
+    }
+    return { customerId, customerEmail: email };
+  } catch {
+    return null;
+  }
+}
+
+app.post("/api/service-issue/start", customerApiLimiter, async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (!token) return res.status(401).json({ error: "Not authenticated" });
+    const customer = await resolveCustomerFromToken(token);
+    if (!customer) return res.status(401).json({ error: "Invalid token" });
+
+    const { issueCategory, outageStatus, outageStart, outageEnd, outageTimezone, impactType, impactDetails, contactedSupportDuring, supportContactMethod, supportContactDetails, subscriptionId } = req.body;
+    if (!issueCategory) return res.status(400).json({ error: "Issue category is required" });
+
+    let chargebeeCustomerId: string | null = null;
+    let invoiceId: string | null = null;
+    let invoiceTotal: number | null = null;
+    let termDays: number | null = null;
+    let proratedAmount: number | null = null;
+    let recommendedCredit: number | null = null;
+    let cooldownBlocked = false;
+    let cooldownReason: string | null = null;
+    let priorCreditDate: Date | null = null;
+    let priorCreditAmount: number | null = null;
+
+    if (customer.customerEmail) {
+      try {
+        setApiLogContext({ customerEmail: customer.customerEmail, triggeredBy: "service_issue" });
+        const data = await fetchCustomerFullData(customer.customerEmail);
+        clearApiLogContext();
+
+        if (data.chargebee?.customers?.length > 0) {
+          const cbCustomer = data.chargebee.customers[0];
+          chargebeeCustomerId = cbCustomer.id;
+
+          const activeSub = subscriptionId
+            ? cbCustomer.subscriptions.find((s: any) => s.id === subscriptionId)
+            : cbCustomer.subscriptions.find((s: any) => s.status === "active") || cbCustomer.subscriptions[0];
+
+          if (activeSub) {
+            const recurringInvoices = cbCustomer.invoices
+              .filter((inv: any) => inv.recurring && inv.status === "paid" && (inv.subscriptionId === activeSub.id || !inv.subscriptionId))
+              .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+            if (recurringInvoices.length > 0) {
+              const latestInvoice = recurringInvoices[0];
+              invoiceId = latestInvoice.id;
+              invoiceTotal = Math.round(latestInvoice.total * 100);
+              termDays = activeSub.billingPeriod === 12 ? 365 : activeSub.billingPeriod === 6 ? 180 : 30;
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching Chargebee data for service issue:", err);
+      }
+    }
+
+    if (issueCategory === "no_connection" && outageStatus === "resolved" && outageStart && outageEnd) {
+      const start = new Date(outageStart);
+      const end = new Date(outageEnd);
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) return res.status(400).json({ error: "Invalid dates provided" });
+      if (end.getTime() <= start.getTime()) return res.status(400).json({ error: "End date must be after start date" });
+      if (end.getTime() > Date.now()) return res.status(400).json({ error: "End date cannot be in the future" });
+      const maxDurationMs = 90 * 24 * 60 * 60 * 1000;
+      if (end.getTime() - start.getTime() > maxDurationMs) return res.status(400).json({ error: "Reported outage duration exceeds 90 days maximum" });
+      const durationHours = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60)));
+      const outageDays = durationHours / 24;
+
+      if (invoiceTotal && termDays) {
+        proratedAmount = Math.round(invoiceTotal * (outageDays / termDays));
+        const cap = Math.round(invoiceTotal * 0.50);
+        recommendedCredit = Math.min(proratedAmount, cap);
+      }
+
+      const recentDowntime = await storage.getRecentDowntimeCredit(customer.customerEmail, 30);
+      if (recentDowntime) {
+        cooldownBlocked = true;
+        cooldownReason = "A downtime credit was already applied within the last 30 days";
+        priorCreditDate = recentDowntime.createdAt;
+        priorCreditAmount = recentDowntime.creditAmountApplied;
+      }
+    }
+
+    if (issueCategory === "slow_speeds") {
+      const recentGoodwill = await storage.getRecentGoodwillCredit(customer.customerEmail, 60);
+      if (recentGoodwill) {
+        cooldownBlocked = true;
+        cooldownReason = "A goodwill credit was already applied within the last 60 days";
+        priorCreditDate = recentGoodwill.createdAt;
+        priorCreditAmount = recentGoodwill.creditAmountApplied;
+      }
+    }
+
+    let outageDurationHours: number | null = null;
+    if (outageStart && outageEnd) {
+      const start = new Date(outageStart);
+      const end = new Date(outageEnd);
+      outageDurationHours = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60)));
+    }
+
+    const report = await storage.createServiceIssueReport({
+      customerId: customer.customerId,
+      customerEmail: customer.customerEmail,
+      chargebeeCustomerId,
+      subscriptionId: subscriptionId || null,
+      issueCategory,
+      outageStatus: outageStatus || null,
+      outageStart: outageStart ? new Date(outageStart) : null,
+      outageEnd: outageEnd ? new Date(outageEnd) : null,
+      outageTimezone: outageTimezone || null,
+      outageDurationHours,
+      impactType: impactType || null,
+      impactDetails: impactDetails || null,
+      contactedSupportDuring: contactedSupportDuring || false,
+      supportContactMethod: supportContactMethod || null,
+      supportContactDetails: supportContactDetails || null,
+      invoiceId,
+      invoiceTotal,
+      termDays,
+      proratedAmount,
+      recommendedCredit,
+      creditType: issueCategory === "slow_speeds" ? "goodwill" : issueCategory === "no_connection" ? "downtime" : null,
+      status: issueCategory === "no_connection" && outageStatus === "active" ? "active_outage" : "pending",
+      outcome: "pending",
+      cooldownBlocked,
+      cooldownReason,
+      priorCreditDate,
+      priorCreditAmount,
+    });
+
+    const goodwillAmount = 1000;
+
+    res.json({
+      reportId: report.id,
+      issueCategory,
+      outageStatus: outageStatus || null,
+      chargebeeCustomerId,
+      invoiceId,
+      invoiceTotal: invoiceTotal ? invoiceTotal / 100 : null,
+      termDays,
+      outageDurationHours,
+      proratedAmount: proratedAmount ? proratedAmount / 100 : null,
+      recommendedCredit: recommendedCredit ? recommendedCredit / 100 : null,
+      creditCapPercent: 50,
+      cooldownBlocked,
+      cooldownReason,
+      priorCreditDate: priorCreditDate?.toISOString() || null,
+      priorCreditAmount: priorCreditAmount ? priorCreditAmount / 100 : null,
+      goodwillAmount: issueCategory === "slow_speeds" && !cooldownBlocked ? goodwillAmount / 100 : null,
+      creditOptions: issueCategory === "no_connection" && outageStatus === "resolved" && !cooldownBlocked && recommendedCredit ? {
+        options: [
+          { percent: 25, amount: Math.round((invoiceTotal || 0) * 0.25) / 100, label: "25% credit" },
+          { percent: 50, amount: Math.round(Math.min(proratedAmount || 0, (invoiceTotal || 0) * 0.50)) / 100, label: "50% credit (recommended)" },
+        ],
+        maxPercent: 50,
+        invoiceTotal: invoiceTotal ? invoiceTotal / 100 : 0,
+      } : null,
+    });
+  } catch (error: any) {
+    console.error("Service issue start error:", error);
+    res.status(500).json({ error: error.message || "Failed to start service issue report" });
+  }
+});
+
+app.post("/api/service-issue/accept-credit", heavyApiLimiter, async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (!token) return res.status(401).json({ error: "Not authenticated" });
+    const customerInfo = await resolveCustomerFromToken(token);
+    if (!customerInfo) return res.status(401).json({ error: "Invalid token" });
+
+    const { reportId, creditPercent, creditType } = req.body;
+    if (!reportId) return res.status(400).json({ error: "Report ID required" });
+
+    const report = await storage.getServiceIssueReport(reportId);
+    if (!report) return res.status(404).json({ error: "Report not found" });
+    if (report.customerEmail !== customerInfo.customerEmail) return res.status(403).json({ error: "Not authorized" });
+    if (report.creditApplied) return res.status(400).json({ error: "Credit was already applied" });
+    if (report.cooldownBlocked) return res.status(400).json({ error: report.cooldownReason || "Credit is not eligible at this time" });
+
+    let creditAmountCents = 0;
+    let appliedCreditType = creditType || report.creditType || "downtime";
+
+    if (appliedCreditType === "goodwill") {
+      creditAmountCents = 1000;
+    } else if (appliedCreditType === "downtime") {
+      const percent = creditPercent || 50;
+      if (percent > 50) return res.status(400).json({ error: "Credit cannot exceed 50% of invoice total" });
+      if (!report.invoiceTotal) return res.status(400).json({ error: "Invoice data not available for credit calculation" });
+      creditAmountCents = Math.round(report.invoiceTotal * (percent / 100));
+    }
+
+    if (creditAmountCents <= 0) return res.status(400).json({ error: "Invalid credit amount" });
+
+    let creditApplied = false;
+    let chargebeeCreditId: string | null = null;
+
+    if (report.chargebeeCustomerId) {
+      const desc = appliedCreditType === "goodwill"
+        ? `Portal Goodwill Credit - Slow speed complaint`
+        : `Portal Downtime Credit - Service outage ${report.outageStart?.toISOString().split('T')[0] || ''} to ${report.outageEnd?.toISOString().split('T')[0] || ''} (${report.outageDurationHours}h)`;
+      const creditResult = await addPromotionalCredit(report.chargebeeCustomerId, creditAmountCents, desc);
+      if (creditResult.success) {
+        creditApplied = true;
+        chargebeeCreditId = creditResult.creditId || null;
+      } else {
+        console.error("Failed to apply credit:", creditResult.error);
+      }
+    }
+
+    await storage.updateServiceIssueReport(reportId, {
+      selectedCreditPercent: creditPercent || (appliedCreditType === "goodwill" ? null : 50),
+      creditAmountApplied: creditAmountCents,
+      creditType: appliedCreditType,
+      creditApplied,
+      chargebeeCreditId,
+      outcome: creditApplied ? "credit_applied" : "credit_failed",
+      status: creditApplied ? "credit_applied" : "credit_failed",
+    });
+
+    if (creditApplied) {
+      res.json({
+        success: true,
+        message: `A credit of $${(creditAmountCents / 100).toFixed(2)} has been applied to your account and will be used on your next invoice.`,
+        creditAmount: creditAmountCents / 100,
+      });
+    } else {
+      res.status(500).json({ error: "We were unable to apply the credit at this time. Please contact support." });
+    }
+  } catch (error: any) {
+    console.error("Accept service issue credit error:", error);
+    res.status(500).json({ error: error.message || "Failed to accept credit" });
+  }
+});
+
+app.post("/api/service-issue/escalate", heavyApiLimiter, async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (!token) return res.status(401).json({ error: "Not authenticated" });
+    const customerInfo = await resolveCustomerFromToken(token);
+    if (!customerInfo) return res.status(401).json({ error: "Invalid token" });
+
+    const { reportId, contactMethod, contactPhone, additionalNotes } = req.body;
+    if (!reportId) return res.status(400).json({ error: "Report ID required" });
+
+    const report = await storage.getServiceIssueReport(reportId);
+    if (!report) return res.status(404).json({ error: "Report not found" });
+    if (report.customerEmail !== customerInfo.customerEmail) return res.status(403).json({ error: "Not authorized" });
+
+    let zendeskTicketId: string | null = null;
+
+    const zendeskSubdomain = process.env.ZENDESK_SUBDOMAIN;
+    const zendeskEmail = process.env.ZENDESK_EMAIL;
+    const zendeskApiToken = process.env.ZENDESK_API_TOKEN;
+
+    if (zendeskSubdomain && zendeskEmail && zendeskApiToken) {
+      try {
+        const categoryLabel = report.issueCategory === "no_connection" ? "No Connection" : report.issueCategory === "slow_speeds" ? "Slow Speeds" : "Other";
+        const body = [
+          `Service Issue Report #${report.id}`,
+          `Issue: ${categoryLabel}`,
+          report.outageStatus ? `Outage Status: ${report.outageStatus}` : null,
+          report.outageStart ? `Outage Start: ${report.outageStart.toISOString()}` : null,
+          report.outageEnd ? `Outage End: ${report.outageEnd.toISOString()}` : null,
+          report.outageDurationHours ? `Duration: ${report.outageDurationHours} hours` : null,
+          report.impactType ? `Impact: ${report.impactType}` : null,
+          report.impactDetails ? `Details: ${report.impactDetails}` : null,
+          report.invoiceTotal ? `Invoice Total: $${(report.invoiceTotal / 100).toFixed(2)}` : null,
+          report.recommendedCredit ? `Recommended Credit: $${(report.recommendedCredit / 100).toFixed(2)}` : null,
+          report.cooldownBlocked ? `Cooldown: ${report.cooldownReason}` : null,
+          additionalNotes ? `Customer Notes: ${additionalNotes}` : null,
+          `Contact: ${contactMethod || "email"}${contactPhone ? ` - ${contactPhone}` : ""}`,
+        ].filter(Boolean).join("\n");
+
+        const zendeskResponse = await fetch(
+          `https://${zendeskSubdomain}.zendesk.com/api/v2/tickets.json`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Basic ${Buffer.from(`${zendeskEmail}/token:${zendeskApiToken}`).toString("base64")}`,
+            },
+            body: JSON.stringify({
+              ticket: {
+                subject: `Service Issue - ${categoryLabel} - ${report.customerEmail}`,
+                comment: { body },
+                requester: { email: report.customerEmail },
+                priority: report.cooldownBlocked ? "normal" : "high",
+                tags: ["service_issue", report.issueCategory, "portal_submission"],
+              },
+            }),
+          }
+        );
+
+        if (zendeskResponse.ok) {
+          const zendeskData = await zendeskResponse.json() as any;
+          zendeskTicketId = zendeskData.ticket?.id?.toString() || null;
+        }
+      } catch (err) {
+        console.error("Zendesk ticket creation failed:", err);
+      }
+    }
+
+    await storage.updateServiceIssueReport(reportId, {
+      outcome: "escalated",
+      status: "escalated",
+      zendeskTicketId,
+      contactMethod: contactMethod || "email",
+      contactPhone: contactPhone || null,
+      additionalNotes: additionalNotes || null,
+    });
+
+    res.json({
+      success: true,
+      ticketId: zendeskTicketId,
+      message: zendeskTicketId
+        ? `Support ticket #${zendeskTicketId} has been created. Our billing team will review your case and reach out via ${contactMethod || "email"}.`
+        : "Your request has been submitted to our support team. We'll reach out via " + (contactMethod || "email") + ".",
+    });
+  } catch (error: any) {
+    console.error("Service issue escalate error:", error);
+    res.status(500).json({ error: error.message || "Failed to escalate" });
+  }
+});
+
+app.post("/api/service-issue/submit-ticket", customerApiLimiter, async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (!token) return res.status(401).json({ error: "Not authenticated" });
+    const customerInfo = await resolveCustomerFromToken(token);
+    if (!customerInfo) return res.status(401).json({ error: "Invalid token" });
+
+    const { reportId, contactMethod, contactPhone, additionalNotes } = req.body;
+    if (!reportId) return res.status(400).json({ error: "Report ID required" });
+
+    const report = await storage.getServiceIssueReport(reportId);
+    if (!report) return res.status(404).json({ error: "Report not found" });
+    if (report.customerEmail !== customerInfo.customerEmail) return res.status(403).json({ error: "Not authorized" });
+
+    let zendeskTicketId: string | null = null;
+    const zendeskSubdomain = process.env.ZENDESK_SUBDOMAIN;
+    const zendeskEmail = process.env.ZENDESK_EMAIL;
+    const zendeskApiToken = process.env.ZENDESK_API_TOKEN;
+
+    if (zendeskSubdomain && zendeskEmail && zendeskApiToken) {
+      try {
+        const body = [
+          `Active Service Issue Report #${report.id}`,
+          `Issue: Service not working (Active Outage)`,
+          report.outageStart ? `Started: ${report.outageStart.toISOString()}` : "Started: Customer unsure of exact time",
+          report.impactDetails ? `Details: ${report.impactDetails}` : null,
+          additionalNotes ? `Customer Notes: ${additionalNotes}` : null,
+          `Contact: ${contactMethod || "email"}${contactPhone ? ` - ${contactPhone}` : ""}`,
+        ].filter(Boolean).join("\n");
+
+        const zendeskResponse = await fetch(
+          `https://${zendeskSubdomain}.zendesk.com/api/v2/tickets.json`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Basic ${Buffer.from(`${zendeskEmail}/token:${zendeskApiToken}`).toString("base64")}`,
+            },
+            body: JSON.stringify({
+              ticket: {
+                subject: `Active Outage - Troubleshooting Needed - ${report.customerEmail}`,
+                comment: { body },
+                requester: { email: report.customerEmail },
+                priority: "urgent",
+                tags: ["active_outage", "troubleshooting", "portal_submission"],
+              },
+            }),
+          }
+        );
+
+        if (zendeskResponse.ok) {
+          const zendeskData = await zendeskResponse.json() as any;
+          zendeskTicketId = zendeskData.ticket?.id?.toString() || null;
+        }
+      } catch (err) {
+        console.error("Zendesk ticket creation failed:", err);
+      }
+    }
+
+    await storage.updateServiceIssueReport(reportId, {
+      outcome: "ticket_submitted",
+      status: "ticket_submitted",
+      zendeskTicketId,
+      contactMethod: contactMethod || "email",
+      contactPhone: contactPhone || null,
+      additionalNotes: additionalNotes || null,
+    });
+
+    res.json({
+      success: true,
+      ticketId: zendeskTicketId,
+      message: zendeskTicketId
+        ? `Troubleshooting ticket #${zendeskTicketId} has been created. Our team will reach out shortly to help restore your service.`
+        : "Your troubleshooting request has been submitted. Our team will reach out shortly.",
+    });
+  } catch (error: any) {
+    console.error("Service issue submit ticket error:", error);
+    res.status(500).json({ error: error.message || "Failed to submit ticket" });
+  }
+});
+
+app.post("/api/service-issue/upload-proof", customerApiLimiter, async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (!token) return res.status(401).json({ error: "Not authenticated" });
+    const customerInfo = await resolveCustomerFromToken(token);
+    if (!customerInfo) return res.status(401).json({ error: "Invalid token" });
+
+    const { reportId, proofFileData, proofFileName } = req.body;
+    if (!reportId) return res.status(400).json({ error: "Report ID required" });
+
+    const report = await storage.getServiceIssueReport(reportId);
+    if (!report) return res.status(404).json({ error: "Report not found" });
+    if (report.customerEmail !== customerInfo.customerEmail) return res.status(403).json({ error: "Not authorized" });
+
+    const existingNames = report.proofFileNames ? report.proofFileNames + "," + proofFileName : proofFileName;
+    const existingData = report.proofFileData ? report.proofFileData + "|||" + proofFileData : proofFileData;
+
+    await storage.updateServiceIssueReport(reportId, {
+      proofFileNames: existingNames,
+      proofFileData: existingData,
+    });
+
+    res.json({ success: true, message: "Proof uploaded successfully" });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to upload proof" });
+  }
+});
+
+app.get("/api/service-issue/history", async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (!token) return res.status(401).json({ error: "Not authenticated" });
+    const customerInfo = await resolveCustomerFromToken(token);
+    if (!customerInfo) return res.status(401).json({ error: "Invalid token" });
+
+    const reports = await storage.getServiceIssuesByCustomer(customerInfo.customerEmail);
+    res.json({ reports });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to get history" });
+  }
+});
+
+// Admin service issue endpoints
+app.get("/api/admin/service-issues", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
+    const token = authHeader.split(" ")[1];
+    try { const d = jwt.verify(token, JWT_SECRET!) as any; if (!d.isAdmin) return res.status(403).json({ error: "Admin access required" }); } catch { return res.status(401).json({ error: "Invalid token" }); }
+
+    const reports = await storage.getAllServiceIssueReports();
+    res.json({ reports });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to get service issues" });
+  }
+});
+
+app.post("/api/admin/service-issues/:id/apply-credit", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
+    const token = authHeader.split(" ")[1];
+    const decoded = jwt.verify(token, JWT_SECRET!) as any;
+    if (!decoded.isAdmin) return res.status(403).json({ error: "Admin access required" });
+
+    const reportId = parseInt(req.params.id);
+    const { creditAmount, creditType, adminNotes } = req.body;
+
+    const report = await storage.getServiceIssueReport(reportId);
+    if (!report) return res.status(404).json({ error: "Report not found" });
+    if (report.creditApplied) return res.status(400).json({ error: "Credit already applied" });
+
+    const creditAmountCents = Math.round((creditAmount || 0) * 100);
+    if (creditAmountCents <= 0) return res.status(400).json({ error: "Invalid credit amount" });
+
+    let creditApplied = false;
+    let chargebeeCreditId: string | null = null;
+
+    if (report.chargebeeCustomerId) {
+      const desc = `Admin Applied ${creditType || "downtime"} Credit - Service Issue #${reportId} - by ${decoded.email || "admin"}`;
+      const creditResult = await addPromotionalCredit(report.chargebeeCustomerId, creditAmountCents, desc);
+      if (creditResult.success) {
+        creditApplied = true;
+        chargebeeCreditId = creditResult.creditId || null;
+      }
+    }
+
+    await storage.updateServiceIssueReport(reportId, {
+      creditAmountApplied: creditAmountCents,
+      creditType: creditType || "downtime",
+      creditApplied,
+      chargebeeCreditId,
+      outcome: creditApplied ? "credit_applied" : "credit_failed",
+      status: creditApplied ? "credit_applied" : "credit_failed",
+      adminNotes: adminNotes || null,
+      reviewedBy: decoded.email || "admin",
+      reviewedAt: new Date(),
+    });
+
+    res.json({ success: creditApplied, message: creditApplied ? "Credit applied successfully" : "Failed to apply credit" });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to apply credit" });
+  }
+});
+
+app.get("/api/admin/service-issues/export", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
+    const token = authHeader.split(" ")[1];
+    try { const d = jwt.verify(token, JWT_SECRET!) as any; if (!d.isAdmin) return res.status(403).json({ error: "Admin access required" }); } catch { return res.status(401).json({ error: "Invalid token" }); }
+
+    const reports = await storage.getAllServiceIssueReports();
+    const csvHeader = "ID,Date,Email,Category,Outage Status,Duration (hrs),Invoice Total,Recommended Credit,Credit Applied,Credit Amount,Credit Type,Outcome,Zendesk Ticket\n";
+    const csvRows = reports.map(r =>
+      `${r.id},${r.createdAt?.toISOString()?.split("T")[0] || ""},${r.customerEmail},${r.issueCategory},${r.outageStatus || ""},${r.outageDurationHours || ""},${r.invoiceTotal ? (r.invoiceTotal / 100).toFixed(2) : ""},${r.recommendedCredit ? (r.recommendedCredit / 100).toFixed(2) : ""},${r.creditApplied},${r.creditAmountApplied ? (r.creditAmountApplied / 100).toFixed(2) : ""},${r.creditType || ""},${r.outcome},${r.zendeskTicketId || ""}`
+    ).join("\n");
+
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename=service_issues_${new Date().toISOString().split("T")[0]}.csv`);
+    res.send(csvHeader + csvRows);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to export" });
+  }
+});
+
 // Admin billing resolution endpoints
 app.get("/api/admin/billing-resolutions", async (req, res) => {
   try {

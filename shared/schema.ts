@@ -256,6 +256,54 @@ export const billingResolutions = pgTable("billing_resolutions", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+export const serviceIssueReports = pgTable("service_issue_reports", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").references(() => customers.id),
+  customerEmail: varchar("customer_email", { length: 255 }).notNull(),
+  chargebeeCustomerId: varchar("chargebee_customer_id", { length: 255 }),
+  subscriptionId: varchar("subscription_id", { length: 255 }),
+  issueCategory: varchar("issue_category", { length: 30 }).notNull(),
+  outageStatus: varchar("outage_status", { length: 30 }),
+  outageStart: timestamp("outage_start"),
+  outageEnd: timestamp("outage_end"),
+  outageTimezone: varchar("outage_timezone", { length: 50 }),
+  outageDurationHours: integer("outage_duration_hours"),
+  impactType: varchar("impact_type", { length: 50 }),
+  impactDetails: text("impact_details"),
+  contactedSupportDuring: boolean("contacted_support_during").default(false),
+  supportContactMethod: varchar("support_contact_method", { length: 30 }),
+  supportContactDetails: text("support_contact_details"),
+  proofFileNames: text("proof_file_names"),
+  proofFileData: text("proof_file_data"),
+  invoiceId: varchar("invoice_id", { length: 255 }),
+  invoiceTotal: integer("invoice_total"),
+  termDays: integer("term_days"),
+  proratedAmount: integer("prorated_amount"),
+  creditCapPercent: integer("credit_cap_percent").default(50),
+  recommendedCredit: integer("recommended_credit"),
+  selectedCreditPercent: integer("selected_credit_percent"),
+  creditAmountApplied: integer("credit_amount_applied"),
+  creditType: varchar("credit_type", { length: 20 }),
+  creditApplied: boolean("credit_applied").default(false),
+  chargebeeCreditId: varchar("chargebee_credit_id", { length: 255 }),
+  status: varchar("status", { length: 30 }).notNull().default("pending"),
+  outcome: varchar("outcome", { length: 30 }).notNull().default("pending"),
+  cooldownBlocked: boolean("cooldown_blocked").default(false),
+  cooldownReason: text("cooldown_reason"),
+  priorCreditDate: timestamp("prior_credit_date"),
+  priorCreditAmount: integer("prior_credit_amount"),
+  zendeskTicketId: varchar("zendesk_ticket_id", { length: 100 }),
+  existingTicketId: varchar("existing_ticket_id", { length: 100 }),
+  contactMethod: varchar("contact_method", { length: 20 }),
+  contactPhone: varchar("contact_phone", { length: 20 }),
+  additionalNotes: text("additional_notes"),
+  adminNotes: text("admin_notes"),
+  reviewedBy: varchar("reviewed_by", { length: 255 }),
+  reviewedAt: timestamp("reviewed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const customersRelations = relations(customers, ({ many }) => ({
   otpCodes: many(otpCodes),
   sessions: many(sessions),
@@ -306,6 +354,8 @@ export type BillingCreditConfig = typeof billingCreditConfig.$inferSelect;
 export type InsertBillingCreditConfig = typeof billingCreditConfig.$inferInsert;
 export type BillingResolution = typeof billingResolutions.$inferSelect;
 export type InsertBillingResolution = typeof billingResolutions.$inferInsert;
+export type ServiceIssueReport = typeof serviceIssueReports.$inferSelect;
+export type InsertServiceIssueReport = typeof serviceIssueReports.$inferInsert;
 
 export const insertCustomerSchema = createInsertSchema(customers);
 export const insertOtpCodeSchema = createInsertSchema(otpCodes);
