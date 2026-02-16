@@ -1801,7 +1801,7 @@ export default function AdminDashboard() {
         )}
 
         {activeTab === 'billing_resolutions' && (
-          <BillingResolutionsAdmin token={token} />
+          <BillingResolutionsAdmin token={localStorage.getItem('admin_token') || ''} />
         )}
 
         {activeTab === 'settings' && (

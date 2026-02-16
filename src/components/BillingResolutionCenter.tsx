@@ -1,6 +1,15 @@
 import { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
+async function safeJson(res: Response) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error("Server returned an unexpected response. Please try again.");
+  }
+}
+
 interface CreditOffer {
   amountCents: number;
   amountDisplay: string;
@@ -83,7 +92,7 @@ export default function BillingResolutionCenter({ authToken }: Props) {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
         body: JSON.stringify({ issueType: selectedIssue, issueDetails }),
       });
-      const data = await res.json();
+      const data = await safeJson(res);
       if (!res.ok) throw new Error(data.error || "Failed to process your request");
       setResolutionData(data);
       if (data.isEscalation) {
@@ -108,7 +117,7 @@ export default function BillingResolutionCenter({ authToken }: Props) {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
         body: JSON.stringify({ resolutionId: resolutionData.resolutionId }),
       });
-      const data = await res.json();
+      const data = await safeJson(res);
       if (!res.ok) throw new Error(data.error || "Failed to apply credit");
       setSuccessMessage(data.message);
       setStep("success");
@@ -158,7 +167,7 @@ export default function BillingResolutionCenter({ authToken }: Props) {
           trackingNumber: trackingNumber || undefined,
         }),
       });
-      const data = await res.json();
+      const data = await safeJson(res);
       if (!res.ok) throw new Error(data.error || "Failed to submit request");
       setTicketId(data.ticketId);
       setSuccessMessage(data.message);
@@ -176,7 +185,7 @@ export default function BillingResolutionCenter({ authToken }: Props) {
       const res = await fetch("/api/billing-resolution/history", {
         headers: { Authorization: `Bearer ${authToken}` },
       });
-      const data = await res.json();
+      const data = await safeJson(res);
       setHistory(data.resolutions || []);
       setShowHistory(true);
     } catch (err) {

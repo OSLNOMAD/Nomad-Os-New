@@ -1,5 +1,14 @@
 import { useState, useEffect } from "react";
 
+async function safeJson(res: Response) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error("Server returned an unexpected response");
+  }
+}
+
 interface BillingResolution {
   id: number;
   customerEmail: string;
@@ -77,7 +86,7 @@ export function BillingResolutionsAdmin({ token }: Props) {
     setLoading(true);
     try {
       const res = await fetch("/api/admin/billing-resolutions", { headers });
-      const data = await res.json();
+      const data = await safeJson(res);
       setResolutions(data.resolutions || []);
     } catch (err) {
       console.error("Failed to load resolutions:", err);
@@ -90,7 +99,7 @@ export function BillingResolutionsAdmin({ token }: Props) {
     setConfigLoading(true);
     try {
       const res = await fetch("/api/admin/billing-credit-config", { headers });
-      const data = await res.json();
+      const data = await safeJson(res);
       setConfigs(data.configs || []);
     } catch (err) {
       console.error("Failed to load configs:", err);
