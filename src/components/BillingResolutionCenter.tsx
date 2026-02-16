@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import ServiceIssueCenter from "./ServiceIssueCenter";
 
 async function safeJson(res: Response) {
   const text = await res.text();
@@ -43,6 +44,7 @@ const issueOptions = [
 
 export default function BillingResolutionCenter({ authToken }: Props) {
   const [step, setStep] = useState<Step>("select_issue");
+  const [showServiceIssueFlow, setShowServiceIssueFlow] = useState(false);
   const [selectedIssue, setSelectedIssue] = useState<string | null>(null);
   const [issueDetails, setIssueDetails] = useState("");
   const [resolutionData, setResolutionData] = useState<ResolutionStartResponse | null>(null);
@@ -79,6 +81,10 @@ export default function BillingResolutionCenter({ authToken }: Props) {
   const handleIssueSelect = (issueType: string) => {
     setSelectedIssue(issueType);
     setError(null);
+    if (issueType === "service_not_working") {
+      setShowServiceIssueFlow(true);
+      return;
+    }
     setStep("describe_issue");
   };
 
@@ -239,7 +245,18 @@ export default function BillingResolutionCenter({ authToken }: Props) {
         </button>
       </div>
 
-      {showHistory ? (
+      {showServiceIssueFlow ? (
+        <div>
+          <button
+            onClick={() => { setShowServiceIssueFlow(false); setSelectedIssue(null); }}
+            className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-4"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+            Back to Billing Help
+          </button>
+          <ServiceIssueCenter authToken={authToken} />
+        </div>
+      ) : showHistory ? (
         <div className="space-y-3">
           {history.length === 0 ? (
             <div className="bg-white rounded-2xl border border-gray-100 p-8 text-center">
