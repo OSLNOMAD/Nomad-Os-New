@@ -4729,7 +4729,11 @@ app.post("/api/billing-resolution/start", customerApiLimiter, async (req, res) =
       try {
         const decoded = jwt.verify(token, JWT_SECRET) as any;
         customerEmail = decoded.email || "";
-        customerId = decoded.customerId || null;
+        const decodedId = decoded.customerId;
+        if (decodedId && decodedId > 0) {
+          const customerExists = await storage.getCustomer(decodedId);
+          customerId = customerExists ? decodedId : null;
+        }
       } catch { return res.status(401).json({ error: "Invalid token" }); }
     }
 
