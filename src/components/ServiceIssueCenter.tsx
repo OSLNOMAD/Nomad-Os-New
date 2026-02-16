@@ -1,4 +1,5 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 
 async function safeJson(res: Response) {
@@ -39,11 +40,22 @@ interface StartResponse {
   } | null;
 }
 
+interface SubscriptionInfo {
+  id: string;
+  planId: string;
+  planName?: string;
+  status: string;
+  iccid: string | null;
+  imei: string | null;
+  mdn: string | null;
+}
+
 interface Props {
   authToken: string;
 }
 
 type Step =
+  | "select_subscription"
   | "select_category"
   | "no_connection_status"
   | "active_outage_when"
@@ -65,7 +77,11 @@ type Step =
 const fadeIn = { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0, y: -10 }, transition: { duration: 0.2 } };
 
 export default function ServiceIssueCenter({ authToken }: Props) {
-  const [step, setStep] = useState<Step>("select_category");
+  const navigate = useNavigate();
+  const [subscriptions, setSubscriptions] = useState<SubscriptionInfo[]>([]);
+  const [selectedSub, setSelectedSub] = useState<SubscriptionInfo | null>(null);
+  const [subsLoading, setSubsLoading] = useState(true);
+  const [step, setStep] = useState<Step>("select_subscription");
   const [issueCategory, setIssueCategory] = useState<string | null>(null);
   const [outageStatus, setOutageStatus] = useState<string | null>(null);
   const [outageStart, setOutageStart] = useState("");
@@ -100,6 +116,50 @@ export default function ServiceIssueCenter({ authToken }: Props) {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const headers = { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` };
+
+  useEffect(() => {
+    const fetchSubscriptions = async () => {
+      setSubsLoading(true);
+      try {
+        const res = await fetch("/api/customer/full-data", {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+        if (!res.ok) throw new Error("Failed to load subscriptions");
+        const data = await res.json();
+        const subs: SubscriptionInfo[] = [];
+        const customers = data.chargebee?.customers || [];
+        for (const cust of customers) {
+          for (const subEntry of cust.subscriptions || []) {
+            const sub = subEntry.subscription;
+            if (sub && (sub.status === "active" || sub.status === "in_trial" || sub.status === "non_renewing")) {
+              subs.push({
+                id: sub.id,
+                planId: sub.plan_id || sub.planId || "",
+                planName: sub.plan_name || sub.planName || sub.plan_id || sub.planId || "",
+                status: sub.status,
+                iccid: sub.cf_iccid || sub.iccid || null,
+                imei: sub.cf_imei || sub.imei || null,
+                mdn: sub.cf_mdn || sub.mdn || null,
+              });
+            }
+          }
+        }
+        setSubscriptions(subs);
+        if (subs.length === 1) {
+          setSelectedSub(subs[0]);
+          setStep("select_category");
+        } else if (subs.length === 0) {
+          setStep("select_category");
+        }
+      } catch (err) {
+        console.error("Failed to fetch subscriptions:", err);
+        setStep("select_category");
+      } finally {
+        setSubsLoading(false);
+      }
+    };
+    fetchSubscriptions();
+  }, [authToken]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -150,6 +210,7 @@ export default function ServiceIssueCenter({ authToken }: Props) {
           contactedSupportDuring: contactedSupport || false,
           supportContactMethod: supportContactMethod || null,
           supportContactDetails: supportContactDetails || null,
+          subscriptionId: selectedSub?.id || null,
         }),
       });
       const data = await safeJson(res);
@@ -283,6 +344,7 @@ export default function ServiceIssueCenter({ authToken }: Props) {
   };
 
   const stepTitle: Record<string, string> = {
+    select_subscription: "Select a subscription",
     select_category: "What issue are you experiencing?",
     no_connection_status: "Is the issue still happening right now?",
     active_outage_when: "When did the issue start?",
@@ -345,7 +407,7 @@ export default function ServiceIssueCenter({ authToken }: Props) {
         </div>
       )}
 
-      {step !== "success" && step !== "select_category" && (
+      {step !== "success" && step !== "select_category" && step !== "select_subscription" && (
         <div className="bg-gray-50 rounded-lg px-4 py-2">
           <p className="text-sm font-medium text-gray-700">{stepTitle[step]}</p>
         </div>
@@ -358,8 +420,68 @@ export default function ServiceIssueCenter({ authToken }: Props) {
       )}
 
       <AnimatePresence mode="wait">
+        {step === "select_subscription" && (
+          <motion.div key="select_subscription" {...fadeIn} className="space-y-4">
+            {subsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div>
+                <span className="ml-3 text-sm text-gray-500">Loading your subscriptions...</span>
+              </div>
+            ) : subscriptions.length === 0 ? (
+              <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 text-sm text-amber-800">
+                No active subscriptions found. Please contact support for assistance.
+              </div>
+            ) : (
+              <>
+                <p className="text-sm text-gray-600 font-medium">Which subscription do you need help with?</p>
+                <div className="space-y-3">
+                  {subscriptions.map((sub) => (
+                    <button
+                      key={sub.id}
+                      onClick={() => {
+                        setSelectedSub(sub);
+                        setStep("select_category");
+                      }}
+                      className="w-full text-left p-4 bg-white border border-gray-200 rounded-xl hover:border-emerald-300 hover:shadow-sm transition-all"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0">
+                          <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.14 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" /></svg>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-gray-900 truncate">{sub.planName || sub.planId}</p>
+                          <p className="text-xs text-gray-500">ID: {sub.id}</p>
+                          <div className="flex gap-3 mt-1 text-xs text-gray-400">
+                            {sub.iccid && <span>ICCID: ...{sub.iccid.slice(-6)}</span>}
+                            {sub.imei && <span>IMEI: ...{sub.imei.slice(-6)}</span>}
+                          </div>
+                        </div>
+                        <svg className="w-5 h-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </motion.div>
+        )}
+
         {step === "select_category" && (
           <motion.div key="select_category" {...fadeIn} className="space-y-3">
+            {selectedSub && subscriptions.length > 1 && (
+              <div className="flex items-center justify-between bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2 mb-1">
+                <div className="text-xs text-emerald-700">
+                  <span className="font-medium">{selectedSub.planName || selectedSub.planId}</span>
+                  <span className="text-emerald-500 ml-2">({selectedSub.id})</span>
+                </div>
+                <button
+                  onClick={() => { setSelectedSub(null); setStep("select_subscription"); }}
+                  className="text-xs text-emerald-600 hover:text-emerald-800 underline"
+                >
+                  Switch
+                </button>
+              </div>
+            )}
             <p className="text-sm text-gray-600 font-medium">{stepTitle.select_category}</p>
             {[
               { key: "no_connection", label: "Service not working at all", desc: "Complete outage - no internet connection", icon: "🔴" },
@@ -491,7 +613,14 @@ export default function ServiceIssueCenter({ authToken }: Props) {
             <div className="space-y-3">
               <button
                 onClick={() => {
-                  window.location.href = "/troubleshoot";
+                  const params = new URLSearchParams();
+                  if (selectedSub) {
+                    params.set("subscription", selectedSub.id);
+                    if (selectedSub.iccid) params.set("iccid", selectedSub.iccid);
+                    if (selectedSub.imei) params.set("imei", selectedSub.imei);
+                    if (selectedSub.mdn) params.set("mdn", selectedSub.mdn);
+                  }
+                  navigate(`/troubleshoot?${params.toString()}`);
                 }}
                 className="w-full p-4 bg-white border border-emerald-200 rounded-xl hover:border-emerald-400 transition-all text-left"
               >
