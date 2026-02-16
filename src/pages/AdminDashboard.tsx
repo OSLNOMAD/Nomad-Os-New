@@ -91,6 +91,35 @@ interface ApiLog {
   createdAt: string
 }
 
+interface PaymentAnalysisResult {
+  customer_id: string
+  customer_name: string
+  email: string
+  previous_success_amount: string
+  current_success_amount: string
+  delta: string
+  reason: string
+  subscription_status: string
+  billing_date: string
+  last_payment_date: string
+}
+
+interface CsvCustomer {
+  customer_id: string
+  customer_name: string
+  email: string
+  company: string
+  previous_success_amount: string
+  current_success_amount: string
+  delta: string
+  previous_attempts: string
+  current_attempts: string
+  current_failed_count: string
+  top_error_code: string
+  top_error_text: string
+  category: string
+}
+
 export default function AdminDashboard() {
   const [feedback, setFeedback] = useState<Feedback[]>([])
   const [loading, setLoading] = useState(true)
@@ -99,7 +128,7 @@ export default function AdminDashboard() {
   const [responseText, setResponseText] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [filter, setFilter] = useState<'all' | 'pending' | 'responded'>('all')
-  const [activeTab, setActiveTab] = useState<'feedback' | 'cancellations' | 'pause_logs' | 'plan_changes' | 'addon_logs' | 'api_logs' | 'settings'>('feedback')
+  const [activeTab, setActiveTab] = useState<'feedback' | 'cancellations' | 'pause_logs' | 'plan_changes' | 'addon_logs' | 'api_logs' | 'payment_analysis' | 'settings'>('feedback')
   const [settings, setSettings] = useState<PortalSetting[]>([])
   const [settingsLoading, setSettingsLoading] = useState(false)
   const [slackChannelId, setSlackChannelId] = useState('')
@@ -129,6 +158,12 @@ export default function AdminDashboard() {
   const [zendeskUsers, setZendeskUsers] = useState<{id: string, name: string, email: string}[]>([])
   const [zendeskGroupsLoading, setZendeskGroupsLoading] = useState(false)
   const [zendeskUsersLoading, setZendeskUsersLoading] = useState(false)
+  const [paymentAnalysisResults, setPaymentAnalysisResults] = useState<PaymentAnalysisResult[]>([])
+  const [paymentAnalysisLoading, setPaymentAnalysisLoading] = useState(false)
+  const [paymentAnalysisProgress, setPaymentAnalysisProgress] = useState({ current: 0, total: 0 })
+  const [_paymentCsvFile, setPaymentCsvFile] = useState<File | null>(null)
+  const [paymentCsvData, setPaymentCsvData] = useState<CsvCustomer[]>([])
+  const [exportingPaymentAnalysis, setExportingPaymentAnalysis] = useState(false)
   const [troubleshootingGroupId, setTroubleshootingGroupId] = useState('')
   const [troubleshootingAssigneeId, setTroubleshootingAssigneeId] = useState('')
   const [cancellationGroupId, setCancellationGroupId] = useState('')
@@ -677,6 +712,108 @@ export default function AdminDashboard() {
     }
   }
 
+  const handlePaymentCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setPaymentCsvFile(file)
+    setPaymentAnalysisResults([])
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      const text = event.target?.result as string
+      const lines = text.split('\n').filter(l => l.trim())
+      if (lines.length < 2) return
+
+      const headerLine = lines[0]
+      const headers = headerLine.split(',').map(h => h.replace(/"/g, '').trim())
+
+      const customers: CsvCustomer[] = []
+      for (let i = 1; i < lines.length; i++) {
+        const values: string[] = []
+        let current = ''
+        let inQuotes = false
+        for (const ch of lines[i]) {
+          if (ch === '"') { inQuotes = !inQuotes; continue }
+          if (ch === ',' && !inQuotes) { values.push(current.trim()); current = ''; continue }
+          current += ch
+        }
+        values.push(current.trim())
+
+        const row: any = {}
+        headers.forEach((h, idx) => { row[h] = values[idx] || '' })
+        customers.push(row as CsvCustomer)
+      }
+      setPaymentCsvData(customers)
+    }
+    reader.readAsText(file)
+  }
+
+  const runPaymentAnalysis = async () => {
+    if (paymentCsvData.length === 0) return
+    setPaymentAnalysisLoading(true)
+    setPaymentAnalysisResults([])
+    setPaymentAnalysisProgress({ current: 0, total: paymentCsvData.length })
+
+    try {
+      const token = localStorage.getItem('admin_token')
+      const batchSize = 10
+      const allResults: PaymentAnalysisResult[] = []
+
+      for (let i = 0; i < paymentCsvData.length; i += batchSize) {
+        const batch = paymentCsvData.slice(i, i + batchSize)
+        const response = await fetch('/api/admin/payment-analysis', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ customers: batch })
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          allResults.push(...data.results)
+          setPaymentAnalysisResults([...allResults])
+          setPaymentAnalysisProgress({ current: Math.min(i + batchSize, paymentCsvData.length), total: paymentCsvData.length })
+        } else {
+          const data = await response.json()
+          setError(data.error || 'Failed to analyze batch')
+        }
+      }
+    } catch (err) {
+      setError('Failed to run payment analysis')
+    } finally {
+      setPaymentAnalysisLoading(false)
+    }
+  }
+
+  const exportPaymentAnalysis = () => {
+    if (paymentAnalysisResults.length === 0) return
+    setExportingPaymentAnalysis(true)
+    const headers = ['Customer ID', 'Customer Name', 'Email', 'Previous Amount', 'Current Amount', 'Delta', 'Subscription Status', 'Billing Date', 'Last Payment Date', 'Reason']
+    const rows = paymentAnalysisResults.map(r => [
+      r.customer_id,
+      r.customer_name,
+      r.email,
+      r.previous_success_amount,
+      r.current_success_amount,
+      r.delta,
+      r.subscription_status,
+      r.billing_date,
+      r.last_payment_date,
+      `"${(r.reason || '').replace(/"/g, '""')}"`
+    ])
+    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `payment_analysis_${new Date().toISOString().split('T')[0]}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+    setExportingPaymentAnalysis(false)
+  }
+
   const filteredFeedback = feedback.filter(f => {
     if (filter === 'pending') return f.status === 'pending' || !f.status
     if (filter === 'responded') return f.status === 'responded'
@@ -797,6 +934,17 @@ export default function AdminDashboard() {
             style={activeTab === 'api_logs' ? { borderColor: '#10a37f', color: '#10a37f' } : {}}
           >
             API Logs
+          </button>
+          <button
+            onClick={() => setActiveTab('payment_analysis')}
+            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'payment_analysis'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
+            style={activeTab === 'payment_analysis' ? { borderColor: '#10a37f', color: '#10a37f' } : {}}
+          >
+            Payment Analysis
           </button>
           <button
             onClick={() => setActiveTab('settings')}
@@ -1507,6 +1655,137 @@ export default function AdminDashboard() {
               </div>
             )}
           </>
+        )}
+
+        {activeTab === 'payment_analysis' && (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">Payment Analysis</h2>
+                <p className="text-gray-600">Upload a CSV to analyze why customers didn't pay this billing cycle</p>
+              </div>
+              {paymentAnalysisResults.length > 0 && (
+                <button
+                  onClick={exportPaymentAnalysis}
+                  disabled={exportingPaymentAnalysis}
+                  className="px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50"
+                  style={{ background: 'linear-gradient(135deg, #10a37f 0%, #0d8a6a 100%)' }}
+                >
+                  {exportingPaymentAnalysis ? 'Exporting...' : 'Export Results CSV'}
+                </button>
+              )}
+            </div>
+
+            <div className="bg-white rounded-lg border border-gray-200 p-6">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                <label className="flex-1">
+                  <span className="block text-sm font-medium text-gray-700 mb-2">Upload CSV File</span>
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={handlePaymentCsvUpload}
+                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer"
+                  />
+                </label>
+                {paymentCsvData.length > 0 && (
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-gray-600">{paymentCsvData.length} customers loaded</span>
+                    <button
+                      onClick={runPaymentAnalysis}
+                      disabled={paymentAnalysisLoading}
+                      className="px-6 py-2 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50"
+                      style={{ background: 'linear-gradient(135deg, #10a37f 0%, #0d8a6a 100%)' }}
+                    >
+                      {paymentAnalysisLoading ? 'Analyzing...' : 'Run Analysis'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {paymentAnalysisLoading && (
+                <div className="mt-4">
+                  <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
+                    <span>Processing customers...</span>
+                    <span>{paymentAnalysisProgress.current} / {paymentAnalysisProgress.total}</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="h-2 rounded-full transition-all duration-300"
+                      style={{
+                        width: `${paymentAnalysisProgress.total > 0 ? (paymentAnalysisProgress.current / paymentAnalysisProgress.total) * 100 : 0}%`,
+                        background: 'linear-gradient(135deg, #10a37f 0%, #0d8a6a 100%)'
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {paymentAnalysisResults.length > 0 && (
+              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Prev Amount</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Curr Amount</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Billing Date</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Last Payment</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reason</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {paymentAnalysisResults.map((r, idx) => (
+                        <tr key={idx} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm font-medium text-gray-900 whitespace-nowrap">{r.customer_name}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{r.email}</td>
+                          <td className="px-4 py-3 text-sm text-gray-900 text-right whitespace-nowrap">${r.previous_success_amount}</td>
+                          <td className="px-4 py-3 text-sm text-gray-900 text-right whitespace-nowrap">${r.current_success_amount}</td>
+                          <td className="px-4 py-3 text-center whitespace-nowrap">
+                            <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${
+                              r.subscription_status === 'active' ? 'bg-green-100 text-green-700' :
+                              r.subscription_status === 'cancelled' ? 'bg-red-100 text-red-700' :
+                              r.subscription_status === 'paused' ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-gray-100 text-gray-700'
+                            }`}>
+                              {r.subscription_status || 'unknown'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{r.billing_date || '-'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{r.last_payment_date || '-'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-700 max-w-md">
+                            <span className={`${
+                              r.reason.toLowerCase().includes('cancelled') ? 'text-red-600' :
+                              r.reason.toLowerCase().includes('paused') ? 'text-yellow-600' :
+                              r.reason.toLowerCase().includes('failing') || r.reason.toLowerCase().includes('unpaid') ? 'text-orange-600' :
+                              r.reason.toLowerCase().includes('already paid') || r.reason.toLowerCase().includes('on time') ? 'text-green-600' :
+                              'text-gray-700'
+                            }`}>
+                              {r.reason}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 text-sm text-gray-600">
+                  {paymentAnalysisResults.length} results
+                  {' | '}
+                  {paymentAnalysisResults.filter(r => r.subscription_status === 'cancelled').length} cancelled
+                  {' | '}
+                  {paymentAnalysisResults.filter(r => r.subscription_status === 'paused').length} paused
+                  {' | '}
+                  {paymentAnalysisResults.filter(r => r.reason.toLowerCase().includes('failing') || r.reason.toLowerCase().includes('unpaid')).length} payment issues
+                  {' | '}
+                  {paymentAnalysisResults.filter(r => r.reason.toLowerCase().includes('already paid') || r.reason.toLowerCase().includes('late retry') || r.reason.toLowerCase().includes('billing date')).length} already paid / billing date shift
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
         {activeTab === 'settings' && (

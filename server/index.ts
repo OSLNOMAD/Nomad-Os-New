@@ -4480,6 +4480,175 @@ app.get("/api/admin/api-logs/stats", async (req, res) => {
   }
 });
 
+app.post("/api/admin/payment-analysis", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "No authorization token provided" });
+    }
+    const token = authHeader.split(" ")[1];
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      if (!decoded.isAdmin) return res.status(403).json({ error: "Admin access required" });
+    } catch {
+      return res.status(401).json({ error: "Invalid token" });
+    }
+
+    const CHARGEBEE_API_KEY = process.env.CHARGEBEE_API_KEY;
+    const CHARGEBEE_SITE = process.env.CHARGEBEE_SITE;
+
+    if (!CHARGEBEE_API_KEY || !CHARGEBEE_SITE) {
+      return res.status(500).json({ error: "Chargebee credentials not configured" });
+    }
+
+    const { customers } = req.body;
+    if (!customers || !Array.isArray(customers) || customers.length === 0) {
+      return res.status(400).json({ error: "customers array is required" });
+    }
+
+    const cbAuth = `Basic ${Buffer.from(`${CHARGEBEE_API_KEY}:`).toString('base64')}`;
+    const cbBase = `https://${CHARGEBEE_SITE}.chargebee.com/api/v2`;
+
+    async function analyzeCustomer(customer: any): Promise<any> {
+      const { customer_id, customer_name, email, previous_success_amount, current_success_amount, delta } = customer;
+      let reason = "Unable to determine";
+      let subscription_status = "unknown";
+      let billing_date: string | null = null;
+      let last_payment_date: string | null = null;
+
+      try {
+        const headers = { 'Authorization': cbAuth, 'Content-Type': 'application/json' };
+
+        const [subsRes, invoicesRes, txnsRes] = await Promise.all([
+          fetch(`${cbBase}/subscriptions?customer_id[is]=${encodeURIComponent(customer_id)}`, { headers }),
+          fetch(`${cbBase}/invoices?customer_id[is]=${encodeURIComponent(customer_id)}&sort_by[desc]=date&limit=5`, { headers }),
+          fetch(`${cbBase}/transactions?customer_id[is]=${encodeURIComponent(customer_id)}&sort_by[desc]=date&limit=10`, { headers }),
+        ]);
+
+        const subsData = subsRes.ok ? await subsRes.json() : { list: [] };
+        const invoicesData = invoicesRes.ok ? await invoicesRes.json() : { list: [] };
+        const txnsData = txnsRes.ok ? await txnsRes.json() : { list: [] };
+
+        const subscriptions = (subsData.list || []).map((s: any) => s.subscription);
+        const invoices = (invoicesData.list || []).map((i: any) => i.invoice);
+        const transactions = (txnsData.list || []).map((t: any) => t.transaction);
+
+        if (subscriptions.length === 0) {
+          reason = "No active subscriptions found in Chargebee";
+          subscription_status = "none";
+          return { customer_id, customer_name, email, previous_success_amount, current_success_amount, delta, reason, subscription_status, billing_date, last_payment_date };
+        }
+
+        const allCancelled = subscriptions.every((s: any) => s.status === "cancelled");
+        const anyPaused = subscriptions.some((s: any) => s.status === "paused");
+        const activeSubs = subscriptions.filter((s: any) => s.status === "active" || s.status === "in_trial" || s.status === "non_renewing");
+
+        if (allCancelled) {
+          const lastCancelled = subscriptions
+            .filter((s: any) => s.cancelled_at)
+            .sort((a: any, b: any) => (b.cancelled_at || 0) - (a.cancelled_at || 0))[0];
+          const cancelDate = lastCancelled?.cancelled_at
+            ? new Date(lastCancelled.cancelled_at * 1000).toISOString().split('T')[0]
+            : "unknown date";
+          reason = `Subscription cancelled on ${cancelDate}`;
+          subscription_status = "cancelled";
+          return { customer_id, customer_name, email, previous_success_amount, current_success_amount, delta, reason, subscription_status, billing_date, last_payment_date };
+        }
+
+        const pausedSubs = subscriptions.filter((s: any) => s.status === "paused");
+        if (pausedSubs.length > 0 && activeSubs.length === 0) {
+          const pausedSub = pausedSubs[0];
+          const resumeDate = pausedSub.resume_date ? new Date(pausedSub.resume_date * 1000).toISOString().split('T')[0] : null;
+          reason = resumeDate ? `Subscription paused (resumes ${resumeDate})` : "Subscription paused";
+          subscription_status = "paused";
+          return { customer_id, customer_name, email, previous_success_amount, current_success_amount, delta, reason, subscription_status, billing_date, last_payment_date };
+        }
+
+        if (activeSubs.length > 0) {
+          const activeSub = activeSubs.sort((a: any, b: any) => (b.current_term_start || 0) - (a.current_term_start || 0))[0];
+          subscription_status = activeSub.status;
+
+          const nextBilling = activeSub.next_billing_at ? new Date(activeSub.next_billing_at * 1000) : null;
+          const billingDay = nextBilling ? nextBilling.getDate() : null;
+          billing_date = nextBilling ? nextBilling.toISOString().split('T')[0] : null;
+
+          const successfulTxns = transactions.filter((t: any) => t.status === "success" && t.type === "payment");
+          if (successfulTxns.length > 0) {
+            last_payment_date = new Date(successfulTxns[0].date * 1000).toISOString().split('T')[0];
+          }
+
+          const paidInvoices = invoices.filter((inv: any) => inv.status === "paid");
+          const unpaidInvoices = invoices.filter((inv: any) => inv.status === "payment_due" || inv.status === "not_paid");
+
+          const now = new Date();
+          const currentMonth = now.getMonth();
+          const currentYear = now.getFullYear();
+
+          const paidThisMonth = paidInvoices.find((inv: any) => {
+            if (!inv.paid_at) return false;
+            const paidDate = new Date(inv.paid_at * 1000);
+            return paidDate.getMonth() === currentMonth && paidDate.getFullYear() === currentYear;
+          });
+
+          const ordinal = (n: number) => {
+            const s = ["th", "st", "nd", "rd"];
+            const v = n % 100;
+            return n + (s[(v - 20) % 10] || s[v] || s[0]);
+          };
+
+          const currentTermStart = activeSub.current_term_start ? new Date(activeSub.current_term_start * 1000) : null;
+          const actualBillingDay = currentTermStart ? currentTermStart.getDate() : billingDay;
+
+          if (actualBillingDay !== null && Math.abs(actualBillingDay - 15) > 3) {
+            if (paidThisMonth) {
+              const paidDate = new Date(paidThisMonth.paid_at * 1000).toISOString().split('T')[0];
+              reason = `Previous payment was a late retry; actual billing date is ${ordinal(actualBillingDay)}, already paid on ${paidDate}`;
+            } else if (unpaidInvoices.length > 0) {
+              const unpaidDate = new Date(unpaidInvoices[0].date * 1000).toISOString().split('T')[0];
+              reason = `Previous payment was a late retry; actual billing date is ${ordinal(actualBillingDay)}, unpaid invoice from ${unpaidDate}`;
+            } else {
+              reason = `Previous payment was a late retry; actual billing date is ${ordinal(actualBillingDay)}`;
+            }
+            return { customer_id, customer_name, email, previous_success_amount, current_success_amount, delta, reason, subscription_status, billing_date, last_payment_date };
+          }
+
+          if (unpaidInvoices.length > 0) {
+            const latestError = transactions.find((t: any) => t.status === "failure");
+            const errorDetail = latestError?.error_text || "card declined/insufficient funds";
+            reason = `Payment failing - ${errorDetail}`;
+            return { customer_id, customer_name, email, previous_success_amount, current_success_amount, delta, reason, subscription_status, billing_date, last_payment_date };
+          }
+
+          if (paidThisMonth) {
+            const paidDate = new Date(paidThisMonth.paid_at * 1000).toISOString().split('T')[0];
+            reason = `Already paid on ${paidDate} - billing date shifted`;
+            return { customer_id, customer_name, email, previous_success_amount, current_success_amount, delta, reason, subscription_status, billing_date, last_payment_date };
+          }
+
+          reason = "Active subscription - no recent payment found";
+        }
+      } catch (err: any) {
+        reason = `Error analyzing: ${err.message || "unknown error"}`;
+      }
+
+      return { customer_id, customer_name, email, previous_success_amount, current_success_amount, delta, reason, subscription_status, billing_date, last_payment_date };
+    }
+
+    const results: any[] = [];
+    const batchSize = 5;
+    for (let i = 0; i < customers.length; i += batchSize) {
+      const batch = customers.slice(i, i + batchSize);
+      const batchResults = await Promise.all(batch.map(analyzeCustomer));
+      results.push(...batchResults);
+    }
+
+    res.json({ results });
+  } catch (error: any) {
+    console.error("Payment analysis error:", error);
+    res.status(500).json({ error: error.message || "Failed to run payment analysis" });
+  }
+});
+
 if (process.env.NODE_ENV === "production") {
   const distPath = path.join(__dirname, "..", "dist");
   app.use(express.static(distPath));
