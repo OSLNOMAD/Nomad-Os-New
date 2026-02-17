@@ -304,6 +304,22 @@ export const serviceIssueReports = pgTable("service_issue_reports", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+export const earlyPaymentLogs = pgTable("early_payment_logs", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").references(() => customers.id),
+  customerEmail: varchar("customer_email", { length: 255 }).notNull(),
+  subscriptionId: varchar("subscription_id", { length: 255 }).notNull(),
+  chargebeeCustomerId: varchar("chargebee_customer_id", { length: 255 }),
+  planId: varchar("plan_id", { length: 255 }),
+  planName: varchar("plan_name", { length: 255 }),
+  termsCharged: integer("terms_charged").notNull(),
+  invoiceId: varchar("invoice_id", { length: 255 }),
+  totalAmount: integer("total_amount"),
+  status: varchar("status", { length: 50 }).default("completed"),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const customersRelations = relations(customers, ({ many }) => ({
   otpCodes: many(otpCodes),
   sessions: many(sessions),
@@ -356,6 +372,8 @@ export type BillingResolution = typeof billingResolutions.$inferSelect;
 export type InsertBillingResolution = typeof billingResolutions.$inferInsert;
 export type ServiceIssueReport = typeof serviceIssueReports.$inferSelect;
 export type InsertServiceIssueReport = typeof serviceIssueReports.$inferInsert;
+export type EarlyPaymentLog = typeof earlyPaymentLogs.$inferSelect;
+export type InsertEarlyPaymentLog = typeof earlyPaymentLogs.$inferInsert;
 
 export const insertCustomerSchema = createInsertSchema(customers);
 export const insertOtpCodeSchema = createInsertSchema(otpCodes);

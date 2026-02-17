@@ -1,4 +1,4 @@
-import { customers, otpCodes, sessions, escalationTickets, customerFeedback, slowSpeedSessions, adminUsers, portalSettings, cancellationRequests, subscriptionPauses, planChangeVerifications, addonLogs, externalApiLogs, billingCreditConfig, billingResolutions, serviceIssueReports, type Customer, type InsertCustomer, type OtpCode, type InsertOtpCode, type Session, type InsertSession, type EscalationTicket, type InsertEscalationTicket, type CustomerFeedback, type InsertCustomerFeedback, type SlowSpeedSession, type InsertSlowSpeedSession, type AdminUser, type InsertAdminUser, type PortalSetting, type InsertPortalSetting, type CancellationRequest, type InsertCancellationRequest, type SubscriptionPause, type InsertSubscriptionPause, type PlanChangeVerification, type InsertPlanChangeVerification, type AddonLog, type InsertAddonLog, type ExternalApiLog, type InsertExternalApiLog, type BillingCreditConfig, type InsertBillingCreditConfig, type BillingResolution, type InsertBillingResolution, type ServiceIssueReport, type InsertServiceIssueReport } from "../shared/schema";
+import { customers, otpCodes, sessions, escalationTickets, customerFeedback, slowSpeedSessions, adminUsers, portalSettings, cancellationRequests, subscriptionPauses, planChangeVerifications, addonLogs, externalApiLogs, billingCreditConfig, billingResolutions, serviceIssueReports, earlyPaymentLogs, type Customer, type InsertCustomer, type OtpCode, type InsertOtpCode, type Session, type InsertSession, type EscalationTicket, type InsertEscalationTicket, type CustomerFeedback, type InsertCustomerFeedback, type SlowSpeedSession, type InsertSlowSpeedSession, type AdminUser, type InsertAdminUser, type PortalSetting, type InsertPortalSetting, type CancellationRequest, type InsertCancellationRequest, type SubscriptionPause, type InsertSubscriptionPause, type PlanChangeVerification, type InsertPlanChangeVerification, type AddonLog, type InsertAddonLog, type ExternalApiLog, type InsertExternalApiLog, type BillingCreditConfig, type InsertBillingCreditConfig, type BillingResolution, type InsertBillingResolution, type ServiceIssueReport, type InsertServiceIssueReport, type EarlyPaymentLog, type InsertEarlyPaymentLog } from "../shared/schema";
 import { db } from "./db";
 import { eq, and, gt, or, desc } from "drizzle-orm";
 
@@ -79,6 +79,9 @@ export interface IStorage {
   getServiceIssuesByCustomer(customerEmail: string): Promise<ServiceIssueReport[]>;
   getRecentDowntimeCredit(customerEmail: string, daysBack: number): Promise<ServiceIssueReport | undefined>;
   getRecentGoodwillCredit(customerEmail: string, daysBack: number): Promise<ServiceIssueReport | undefined>;
+
+  createEarlyPaymentLog(data: InsertEarlyPaymentLog): Promise<EarlyPaymentLog>;
+  getAllEarlyPaymentLogs(): Promise<EarlyPaymentLog[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -544,6 +547,15 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(serviceIssueReports.createdAt))
       .limit(1);
     return results[0] || undefined;
+  }
+
+  async createEarlyPaymentLog(data: InsertEarlyPaymentLog): Promise<EarlyPaymentLog> {
+    const [created] = await db.insert(earlyPaymentLogs).values(data).returning();
+    return created;
+  }
+
+  async getAllEarlyPaymentLogs(): Promise<EarlyPaymentLog[]> {
+    return db.select().from(earlyPaymentLogs).orderBy(desc(earlyPaymentLogs.createdAt));
   }
 }
 
