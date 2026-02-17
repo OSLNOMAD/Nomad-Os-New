@@ -1163,10 +1163,15 @@ app.post("/api/billing/pay-early", heavyApiLimiter, async (req, res) => {
       return res.status(400).json({ error: "Number of terms must be between 1 and 12" });
     }
 
-    const { verifySubscriptionOwnership, billFutureRenewals, chargebeeApiPost } = await import('./services');
+    const { verifySubscriptionOwnership, billFutureRenewals, chargebeeApiPost, checkAdvanceInvoiceForSubscription } = await import('./services');
     const owns = await verifySubscriptionOwnership(customerEmail, subscriptionId);
     if (!owns) {
       return res.status(403).json({ error: "Subscription not found for this customer" });
+    }
+
+    const advCheck = await checkAdvanceInvoiceForSubscription(subscriptionId);
+    if (advCheck.hasAdvanceInvoice) {
+      return res.status(400).json({ error: "This subscription already has an advance invoice. You cannot pay early again until the current advance period ends.", alreadyHasAdvanceInvoice: true });
     }
 
     const { planId, planName } = req.body;
@@ -1188,7 +1193,7 @@ app.post("/api/billing/pay-early", heavyApiLimiter, async (req, res) => {
       } catch (logErr) {
         console.error("Failed to log early payment failure:", logErr);
       }
-      return res.status(400).json({ error: result.error || "Failed to process early payment" });
+      return res.status(400).json({ error: result.error || "Failed to process early payment", alreadyHasAdvanceInvoice: result.alreadyHasAdvanceInvoice || false });
     }
 
     try {

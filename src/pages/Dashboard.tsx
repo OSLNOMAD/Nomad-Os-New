@@ -59,6 +59,9 @@ interface ChargebeeSubscription {
       amount: number
     }>
   }
+  hasAdvanceInvoice?: boolean
+  advanceInvoiceId?: string
+  advanceInvoiceTotal?: number
 }
 
 interface ChargebeeInvoice {
@@ -1181,6 +1184,30 @@ void collectibleInvoices.length
                               </div>
                             )}
 
+                            {sub.hasAdvanceInvoice && (
+                              <div className="mt-4 pt-4 border-t border-gray-50">
+                                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl shadow-sm p-4">
+                                  <div className="flex items-start gap-3">
+                                    <svg className="w-5 h-5 text-emerald-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    <div className="flex-1">
+                                      <p className="text-sm font-semibold text-emerald-800">Advance Payment Made</p>
+                                      <p className="text-sm text-emerald-700 mt-1">
+                                        You have already paid in advance for future renewal(s).
+                                        {sub.advanceInvoiceTotal !== undefined && (
+                                          <> Amount: <span className="font-semibold">{formatCurrency(sub.advanceInvoiceTotal)}</span></>
+                                        )}
+                                        {sub.advanceInvoiceId && (
+                                          <> (Invoice #{sub.advanceInvoiceId})</>
+                                        )}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
                             <div className="mt-4 pt-4 border-t border-gray-50 flex flex-wrap gap-3">
                               <button
                                 onClick={() => openSubscriptionDetail(sub, cbCustomer)}
@@ -1251,7 +1278,7 @@ void collectibleInvoices.length
                                           Manage Add-ons
                                         </button>
                                       )}
-                                      {sub.status === 'active' && (
+                                      {sub.status === 'active' && !sub.hasAdvanceInvoice && (
                                         <button
                                           onClick={() => {
                                             setManageDropdownOpen(null)
@@ -1265,6 +1292,12 @@ void collectibleInvoices.length
                                           <svg className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
                                           Pay Early
                                         </button>
+                                      )}
+                                      {sub.status === 'active' && sub.hasAdvanceInvoice && (
+                                        <div className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-400 cursor-not-allowed">
+                                          <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                          Already Paid Early
+                                        </div>
                                       )}
                                       {sub.status === 'active' && (
                                         <>

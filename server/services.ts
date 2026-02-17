@@ -166,6 +166,10 @@ export interface ChargebeeSubscription {
     zip: string;
     country: string;
   };
+  hasAdvanceInvoice?: boolean;
+  advanceInvoiceId?: string;
+  advanceInvoiceTotal?: number;
+  chargebeeCustomerId?: string;
 }
 
 export interface ChargebeeInvoice {
@@ -628,6 +632,7 @@ function parseChargebeeSubscription(s: any): ChargebeeSubscription {
     imei: s.cf_Device_IMEI || null,
     mdn: s.cf_mdn || null,
     hasScheduledChanges: s.has_scheduled_changes || false,
+    hasAdvanceInvoice: s.has_scheduled_advance_invoices || false,
     subscriptionItems: (s.subscription_items || []).map((si: any) => ({
       itemPriceId: si.item_price_id,
       itemType: si.item_type,
@@ -1338,9 +1343,14 @@ export async function chargebeeApiPost(endpoint: string, data: Record<string, st
   });
   
   if (!response.ok) {
-    const error = await response.text();
-    console.error('Chargebee API error:', error);
-    return null;
+    const errorText = await response.text();
+    console.error('Chargebee API error:', errorText);
+    let errorMessage = 'Chargebee API error';
+    try {
+      const errorJson = JSON.parse(errorText);
+      errorMessage = errorJson.message || errorJson.error_msg || errorMessage;
+    } catch {}
+    throw new Error(errorMessage);
   }
   return response.json();
 }
@@ -1393,7 +1403,7 @@ export async function collectPaymentForInvoice(invoiceId: string): Promise<{ suc
   }
 }
 
-export async function billFutureRenewals(subscriptionId: string, termsToCharge: number): Promise<{ success: boolean; invoiceId?: string; total?: number; error?: string }> {
+export async function billFutureRenewals(subscriptionId: string, termsToCharge: number): Promise<{ success: boolean; invoiceId?: string; total?: number; error?: string; alreadyHasAdvanceInvoice?: boolean }> {
   try {
     if (termsToCharge < 1 || termsToCharge > 12) {
       return { success: false, error: 'Number of terms must be between 1 and 12' };
@@ -1415,10 +1425,25 @@ export async function billFutureRenewals(subscriptionId: string, termsToCharge: 
   } catch (error: any) {
     console.error('Error billing future renewals:', error);
     const msg = error.message || 'Failed to bill future renewals';
+    if (msg.includes('already created an advance invoice') || msg.includes('advance invoice')) {
+      return { success: false, error: 'This subscription already has an advance invoice. You cannot pay early again until the current advance period ends.', alreadyHasAdvanceInvoice: true };
+    }
     if (msg.includes('advance_invoices_not_enabled') || msg.includes('not_enabled')) {
       return { success: false, error: 'Advance invoicing is not enabled for this site. Please contact support.' };
     }
     return { success: false, error: msg };
+  }
+}
+
+export async function checkAdvanceInvoiceForSubscription(subscriptionId: string): Promise<{ hasAdvanceInvoice: boolean }> {
+  try {
+    const scheduleData = await chargebeeApiGet(`/subscriptions/${subscriptionId}/retrieve_advance_invoice_schedule`);
+    if (scheduleData?.advance_invoice_schedules?.length > 0 || scheduleData?.advance_invoice_schedule) {
+      return { hasAdvanceInvoice: true };
+    }
+    return { hasAdvanceInvoice: false };
+  } catch (error) {
+    return { hasAdvanceInvoice: false };
   }
 }
 

@@ -306,7 +306,7 @@ export const serviceIssueReports = pgTable("service_issue_reports", {
 
 export const earlyPaymentLogs = pgTable("early_payment_logs", {
   id: serial("id").primaryKey(),
-  customerId: integer("customer_id").references(() => customers.id),
+  customerId: integer("customer_id"),
   customerEmail: varchar("customer_email", { length: 255 }).notNull(),
   subscriptionId: varchar("subscription_id", { length: 255 }).notNull(),
   chargebeeCustomerId: varchar("chargebee_customer_id", { length: 255 }),
