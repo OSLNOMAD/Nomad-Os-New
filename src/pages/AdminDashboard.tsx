@@ -93,6 +93,22 @@ interface ApiLog {
   createdAt: string
 }
 
+interface EarlyPaymentLog {
+  id: number
+  customerId: number
+  customerEmail: string
+  subscriptionId: string
+  chargebeeCustomerId: string | null
+  planId: string | null
+  planName: string | null
+  termsCharged: number
+  invoiceId: string | null
+  totalAmount: number | null
+  status: string | null
+  errorMessage: string | null
+  createdAt: string
+}
+
 interface PaymentAnalysisResult {
   customer_id: string
   customer_name: string
@@ -130,7 +146,8 @@ export default function AdminDashboard() {
   const [responseText, setResponseText] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [filter, setFilter] = useState<'all' | 'pending' | 'responded'>('all')
-  const [activeTab, setActiveTab] = useState<'feedback' | 'cancellations' | 'pause_logs' | 'plan_changes' | 'addon_logs' | 'api_logs' | 'payment_analysis' | 'billing_resolutions' | 'service_issues' | 'settings'>('feedback')
+  const [activeTab, setActiveTab] = useState<'feedback' | 'cancellations' | 'pause_logs' | 'plan_changes' | 'addon_logs' | 'api_logs' | 'payment_analysis' | 'billing_resolutions' | 'service_issues' | 'early_payments' | 'settings'>('feedback')
+  const [openNavGroup, setOpenNavGroup] = useState<string | null>('customer')
   const [settings, setSettings] = useState<PortalSetting[]>([])
   const [settingsLoading, setSettingsLoading] = useState(false)
   const [slackChannelId, setSlackChannelId] = useState('')
@@ -152,6 +169,10 @@ export default function AdminDashboard() {
   const [addonLogsLoading, setAddonLogsLoading] = useState(false)
   const [addonLogFilter, setAddonLogFilter] = useState<'all' | 'add' | 'remove' | 'completed' | 'failed'>('all')
   const [exportingAddonLogs, setExportingAddonLogs] = useState(false)
+  const [earlyPaymentLogs, setEarlyPaymentLogs] = useState<EarlyPaymentLog[]>([])
+  const [earlyPaymentLogsLoading, setEarlyPaymentLogsLoading] = useState(false)
+  const [earlyPaymentFilter, setEarlyPaymentFilter] = useState<'all' | 'completed' | 'failed'>('all')
+  const [exportingEarlyPayments, setExportingEarlyPayments] = useState(false)
   const [apiLogs, setApiLogs] = useState<ApiLog[]>([])
   const [apiLogsLoading, setApiLogsLoading] = useState(false)
   const [apiLogFilter, setApiLogFilter] = useState<'all' | 'chargebee' | 'shopify' | 'shipstation' | 'thingspace' | 'failed'>('all')
@@ -199,6 +220,8 @@ export default function AdminDashboard() {
       fetchAddonLogs()
     } else if (activeTab === 'api_logs') {
       fetchApiLogs()
+    } else if (activeTab === 'early_payments') {
+      fetchEarlyPaymentLogs()
     }
   }, [activeTab])
 
@@ -547,6 +570,55 @@ export default function AdminDashboard() {
     }
   }
 
+  const fetchEarlyPaymentLogs = async () => {
+    setEarlyPaymentLogsLoading(true)
+    try {
+      const token = localStorage.getItem('admin_token')
+      const response = await fetch('/api/admin/early-payment-logs', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (response.status === 401 || response.status === 403) {
+        localStorage.removeItem('admin_token')
+        localStorage.removeItem('admin_user')
+        navigate('/admin')
+        return
+      }
+      if (response.ok) {
+        const data = await response.json()
+        setEarlyPaymentLogs(data.earlyPaymentLogs || [])
+      }
+    } catch (err) {
+      setError('Failed to load early payment logs')
+    } finally {
+      setEarlyPaymentLogsLoading(false)
+    }
+  }
+
+  const handleExportEarlyPayments = async () => {
+    setExportingEarlyPayments(true)
+    try {
+      const token = localStorage.getItem('admin_token')
+      const response = await fetch('/api/admin/early-payment-logs/export', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (response.ok) {
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `early-payment-logs-${new Date().toISOString().split('T')[0]}.csv`
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        window.URL.revokeObjectURL(url)
+      }
+    } catch (err) {
+      setError('Failed to export early payment logs')
+    } finally {
+      setExportingEarlyPayments(false)
+    }
+  }
+
   const handleExportPlanChanges = async () => {
     setExportingPlanChanges(true)
     try {
@@ -869,119 +941,86 @@ export default function AdminDashboard() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-6 flex gap-2 border-b border-gray-200">
-          <button
-            onClick={() => setActiveTab('feedback')}
-            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'feedback'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-            style={activeTab === 'feedback' ? { borderColor: '#10a37f', color: '#10a37f' } : {}}
-          >
-            Customer Feedback
-          </button>
-          <button
-            onClick={() => setActiveTab('cancellations')}
-            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'cancellations'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-            style={activeTab === 'cancellations' ? { borderColor: '#10a37f', color: '#10a37f' } : {}}
-          >
-            Cancellation Requests
-          </button>
-          <button
-            onClick={() => setActiveTab('pause_logs')}
-            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'pause_logs'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-            style={activeTab === 'pause_logs' ? { borderColor: '#10a37f', color: '#10a37f' } : {}}
-          >
-            Pause Logs
-          </button>
-          <button
-            onClick={() => setActiveTab('plan_changes')}
-            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'plan_changes'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-            style={activeTab === 'plan_changes' ? { borderColor: '#10a37f', color: '#10a37f' } : {}}
-          >
-            Plan Changes
-          </button>
-          <button
-            onClick={() => setActiveTab('addon_logs')}
-            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'addon_logs'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-            style={activeTab === 'addon_logs' ? { borderColor: '#10a37f', color: '#10a37f' } : {}}
-          >
-            Add-on Logs
-          </button>
-          <button
-            onClick={() => setActiveTab('api_logs')}
-            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'api_logs'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-            style={activeTab === 'api_logs' ? { borderColor: '#10a37f', color: '#10a37f' } : {}}
-          >
-            API Logs
-          </button>
-          <button
-            onClick={() => setActiveTab('payment_analysis')}
-            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'payment_analysis'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-            style={activeTab === 'payment_analysis' ? { borderColor: '#10a37f', color: '#10a37f' } : {}}
-          >
-            Payment Analysis
-          </button>
-          <button
-            onClick={() => setActiveTab('billing_resolutions')}
-            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'billing_resolutions'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-            style={activeTab === 'billing_resolutions' ? { borderColor: '#10a37f', color: '#10a37f' } : {}}
-          >
-            Billing Resolutions
-          </button>
-          <button
-            onClick={() => setActiveTab('service_issues')}
-            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'service_issues'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-            style={activeTab === 'service_issues' ? { borderColor: '#10a37f', color: '#10a37f' } : {}}
-          >
-            Service Issues
-          </button>
-          <button
-            onClick={() => setActiveTab('settings')}
-            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'settings'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-            style={activeTab === 'settings' ? { borderColor: '#10a37f', color: '#10a37f' } : {}}
-          >
-            Settings
-          </button>
-        </div>
+      <div className="flex min-h-[calc(100vh-65px)]">
+        <aside className="w-56 bg-white border-r border-gray-200 flex-shrink-0 overflow-y-auto">
+          <nav className="py-4">
+            {[
+              {
+                group: 'customer',
+                label: 'Customer',
+                items: [
+                  { key: 'feedback' as const, label: 'Feedback' },
+                  { key: 'cancellations' as const, label: 'Cancellations' },
+                ],
+              },
+              {
+                group: 'subscriptions',
+                label: 'Subscriptions',
+                items: [
+                  { key: 'pause_logs' as const, label: 'Pause Logs' },
+                  { key: 'plan_changes' as const, label: 'Plan Changes' },
+                  { key: 'addon_logs' as const, label: 'Add-on Logs' },
+                  { key: 'early_payments' as const, label: 'Early Payments' },
+                ],
+              },
+              {
+                group: 'billing',
+                label: 'Billing & Support',
+                items: [
+                  { key: 'payment_analysis' as const, label: 'Payment Analysis' },
+                  { key: 'billing_resolutions' as const, label: 'Billing Resolutions' },
+                  { key: 'service_issues' as const, label: 'Service Issues' },
+                ],
+              },
+              {
+                group: 'system',
+                label: 'System',
+                items: [
+                  { key: 'api_logs' as const, label: 'API Logs' },
+                  { key: 'settings' as const, label: 'Settings' },
+                ],
+              },
+            ].map((section) => {
+              const isOpen = openNavGroup === section.group || section.items.some(i => i.key === activeTab)
+              return (
+                <div key={section.group} className="mb-1">
+                  <button
+                    onClick={() => setOpenNavGroup(isOpen && !section.items.some(i => i.key === activeTab) ? null : section.group)}
+                    className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    {section.label}
+                    <svg
+                      className={`w-3.5 h-3.5 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                      fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {isOpen && (
+                    <div className="mt-0.5">
+                      {section.items.map((item) => (
+                        <button
+                          key={item.key}
+                          onClick={() => setActiveTab(item.key)}
+                          className={`w-full text-left px-6 py-2 text-sm transition-colors ${
+                            activeTab === item.key
+                              ? 'font-medium border-r-2'
+                              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                          }`}
+                          style={activeTab === item.key ? { color: '#10a37f', borderColor: '#10a37f', backgroundColor: 'rgba(16, 163, 127, 0.05)' } : {}}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </nav>
+        </aside>
+
+        <main className="flex-1 px-4 sm:px-6 lg:px-8 py-8 overflow-y-auto">
 
         {error && (
           <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
@@ -1820,6 +1859,107 @@ export default function AdminDashboard() {
           <ServiceIssuesAdmin token={localStorage.getItem('admin_token') || ''} />
         )}
 
+        {activeTab === 'early_payments' && (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">Early Payment Logs</h2>
+                <p className="text-gray-600">{earlyPaymentLogs.length} total entries</p>
+              </div>
+              <div className="flex gap-2 items-center">
+                <div className="flex gap-1">
+                  {(['all', 'completed', 'failed'] as const).map((f) => (
+                    <button
+                      key={f}
+                      onClick={() => setEarlyPaymentFilter(f)}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                        earlyPaymentFilter === f
+                          ? 'text-white border-0'
+                          : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+                      }`}
+                      style={earlyPaymentFilter === f ? { background: 'linear-gradient(135deg, #10a37f 0%, #0d8a6a 100%)' } : {}}
+                    >
+                      {f.charAt(0).toUpperCase() + f.slice(1)}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={handleExportEarlyPayments}
+                  disabled={exportingEarlyPayments}
+                  className="px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50"
+                  style={{ background: 'linear-gradient(135deg, #10a37f 0%, #0d8a6a 100%)' }}
+                >
+                  {exportingEarlyPayments ? 'Exporting...' : 'Export CSV'}
+                </button>
+              </div>
+            </div>
+
+            {earlyPaymentLogsLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2" style={{ borderColor: '#10a37f' }}></div>
+              </div>
+            ) : (
+              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Subscription</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Plan</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Terms</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Invoice</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {earlyPaymentLogs
+                        .filter(log => earlyPaymentFilter === 'all' || log.status === earlyPaymentFilter)
+                        .length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="px-4 py-8 text-center text-gray-500">No early payment logs found</td>
+                        </tr>
+                      ) : (
+                        earlyPaymentLogs
+                          .filter(log => earlyPaymentFilter === 'all' || log.status === earlyPaymentFilter)
+                          .map((log) => (
+                          <tr key={log.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                              {new Date(log.createdAt).toLocaleDateString()} {new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-900">{log.customerEmail}</td>
+                            <td className="px-4 py-3 text-sm font-mono text-gray-600">{log.subscriptionId}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{log.planName || log.planId || '-'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-900 font-medium">{log.termsCharged}</td>
+                            <td className="px-4 py-3 text-sm font-mono text-gray-600">{log.invoiceId || '-'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-900 font-medium">
+                              {log.totalAmount ? `$${(log.totalAmount / 100).toFixed(2)}` : '-'}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                log.status === 'completed'
+                                  ? 'bg-green-100 text-green-800'
+                                  : 'bg-red-100 text-red-800'
+                              }`}>
+                                {log.status || 'unknown'}
+                              </span>
+                              {log.errorMessage && (
+                                <p className="text-xs text-red-500 mt-1">{log.errorMessage}</p>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {activeTab === 'settings' && (
           <div className="space-y-6">
             <div>
@@ -2012,6 +2152,7 @@ export default function AdminDashboard() {
           </div>
         )}
       </main>
+      </div>
 
       <AnimatePresence>
         {selectedFeedback && (
