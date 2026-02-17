@@ -2454,19 +2454,40 @@ void collectibleInvoices.length
                   </div>
 
                   <div className="bg-gray-50 rounded-xl p-4 space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Plan amount per period</span>
-                      <span className="font-medium text-gray-900">{formatCurrency(payEarlySubscription.planAmount)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Number of periods</span>
-                      <span className="font-medium text-gray-900">x {payEarlyTerms}</span>
-                    </div>
-                    <div className="border-t border-gray-200 pt-2 flex justify-between text-sm">
-                      <span className="font-medium text-gray-700">Estimated total</span>
-                      <span className="font-bold text-gray-900">{formatCurrency(payEarlySubscription.planAmount * payEarlyTerms)}</span>
-                    </div>
-                    <p className="text-xs text-gray-400 mt-1">Final amount may vary if add-ons or discounts apply.</p>
+                    {(() => {
+                      const addonItems = (payEarlySubscription.subscriptionItems || []).filter(item => item.itemType === 'addon')
+                      const addonTotal = addonItems.reduce((sum, item) => sum + (item.amount || 0), 0)
+                      const periodTotal = payEarlySubscription.planAmount + addonTotal
+                      return (
+                        <>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-500">Plan</span>
+                            <span className="font-medium text-gray-900">{formatCurrency(payEarlySubscription.planAmount)}</span>
+                          </div>
+                          {addonItems.map((addon, idx) => (
+                            <div key={idx} className="flex justify-between text-sm">
+                              <span className="text-gray-500">{getPlanDisplayName(addon.itemPriceId)}</span>
+                              <span className="font-medium text-gray-900">{formatCurrency(addon.amount)}</span>
+                            </div>
+                          ))}
+                          {addonItems.length > 0 && (
+                            <div className="border-t border-gray-200 pt-2 flex justify-between text-sm">
+                              <span className="text-gray-500">Total per period</span>
+                              <span className="font-medium text-gray-900">{formatCurrency(periodTotal)}</span>
+                            </div>
+                          )}
+                          <div className={`${addonItems.length === 0 ? 'border-t border-gray-200 pt-2' : ''} flex justify-between text-sm`}>
+                            <span className="text-gray-500">Number of periods</span>
+                            <span className="font-medium text-gray-900">x {payEarlyTerms}</span>
+                          </div>
+                          <div className="border-t border-gray-200 pt-2 flex justify-between text-sm">
+                            <span className="font-medium text-gray-700">Estimated total</span>
+                            <span className="font-bold text-gray-900">{formatCurrency(periodTotal * payEarlyTerms)}</span>
+                          </div>
+                          <p className="text-xs text-gray-400 mt-1">Final amount may vary if discounts apply.</p>
+                        </>
+                      )
+                    })()}
                   </div>
 
                   <button
@@ -2481,7 +2502,7 @@ void collectibleInvoices.length
                         Processing...
                       </span>
                     ) : (
-                      `Pay ${formatCurrency(payEarlySubscription.planAmount * payEarlyTerms)} Now`
+                      `Pay ${formatCurrency((payEarlySubscription.planAmount + (payEarlySubscription.subscriptionItems || []).filter(i => i.itemType === 'addon').reduce((s, i) => s + (i.amount || 0), 0)) * payEarlyTerms)} Now`
                     )}
                   </button>
                 </>
