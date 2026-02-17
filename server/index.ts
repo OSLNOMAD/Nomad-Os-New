@@ -1165,7 +1165,7 @@ app.post("/api/billing/pay-early", heavyApiLimiter, async (req, res) => {
     res.json({
       success: true,
       invoiceId: result.invoiceId,
-      total: result.total,
+      total: result.total ? result.total / 100 : undefined,
       message: `Successfully billed for ${termsToCharge} future renewal(s)`,
     });
   } catch (error: any) {

@@ -558,13 +558,7 @@ void collectibleInvoices.length
     setPayEarlyLoading(true)
     setPayEarlyResult(null)
     try {
-      const token = localStorage.getItem('auth_token') || authToken
-      if (!token) {
-        localStorage.removeItem('auth_token')
-        localStorage.removeItem('customer')
-        navigate('/signin')
-        return
-      }
+      const token = localStorage.getItem('auth_token')
       const response = await fetch('/api/billing/pay-early', {
         method: 'POST',
         headers: {
@@ -576,12 +570,6 @@ void collectibleInvoices.length
           termsToCharge: payEarlyTerms
         })
       })
-      if (response.status === 401) {
-        localStorage.removeItem('auth_token')
-        localStorage.removeItem('customer')
-        navigate('/signin')
-        return
-      }
       const data = await response.json()
       if (response.ok) {
         setPayEarlyResult({
