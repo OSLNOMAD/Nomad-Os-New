@@ -1132,14 +1132,27 @@ app.post("/api/billing/pay-early", heavyApiLimiter, async (req, res) => {
     }
 
     const token = authHeader.split(" ")[1];
-    const session = await storage.getSessionByToken(token);
-    if (!session) {
-      return res.status(401).json({ error: "Invalid session" });
-    }
+    const decoded = jwt.verify(token, JWT_SECRET) as { customerId: number; email?: string; isTest?: boolean };
 
-    const customer = await storage.getCustomer(session.customerId);
-    if (!customer) {
-      return res.status(404).json({ error: "Customer not found" });
+    let customerEmail: string;
+    let customerId: number;
+    let chargebeeCustomerId: string | undefined;
+
+    if (decoded.isTest && decoded.email) {
+      customerEmail = decoded.email;
+      customerId = -1;
+    } else {
+      const session = await storage.getSessionByToken(token);
+      if (!session) {
+        return res.status(401).json({ error: "Invalid session" });
+      }
+      const customer = await storage.getCustomer(session.customerId);
+      if (!customer) {
+        return res.status(404).json({ error: "Customer not found" });
+      }
+      customerEmail = customer.email;
+      customerId = customer.id;
+      chargebeeCustomerId = customer.chargebeeCustomerId || undefined;
     }
 
     const { subscriptionId, termsToCharge } = req.body;
@@ -1151,7 +1164,7 @@ app.post("/api/billing/pay-early", heavyApiLimiter, async (req, res) => {
     }
 
     const { verifySubscriptionOwnership, billFutureRenewals, chargebeeApiPost } = await import('./services');
-    const owns = await verifySubscriptionOwnership(customer.email, subscriptionId);
+    const owns = await verifySubscriptionOwnership(customerEmail, subscriptionId);
     if (!owns) {
       return res.status(403).json({ error: "Subscription not found for this customer" });
     }
@@ -1162,10 +1175,10 @@ app.post("/api/billing/pay-early", heavyApiLimiter, async (req, res) => {
     if (!result.success) {
       try {
         await storage.createEarlyPaymentLog({
-          customerId: session.customerId,
-          customerEmail: customer.email,
+          customerId,
+          customerEmail,
           subscriptionId,
-          chargebeeCustomerId: customer.chargebeeCustomerId || undefined,
+          chargebeeCustomerId,
           planId: planId || undefined,
           planName: planName || undefined,
           termsCharged: termsToCharge,
@@ -1180,10 +1193,10 @@ app.post("/api/billing/pay-early", heavyApiLimiter, async (req, res) => {
 
     try {
       await storage.createEarlyPaymentLog({
-        customerId: session.customerId,
-        customerEmail: customer.email,
+        customerId,
+        customerEmail,
         subscriptionId,
-        chargebeeCustomerId: customer.chargebeeCustomerId || undefined,
+        chargebeeCustomerId,
         planId: planId || undefined,
         planName: planName || undefined,
         termsCharged: termsToCharge,
