@@ -244,6 +244,11 @@ export default function Dashboard() {
   const [subscriptionForHistory, setSubscriptionForHistory] = useState<string | null>(null)
   const [cancellationHistory, setCancellationHistory] = useState<any[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
+  const [payEarlyModalOpen, setPayEarlyModalOpen] = useState(false)
+  const [payEarlySubscription, setPayEarlySubscription] = useState<ChargebeeSubscription | null>(null)
+  const [payEarlyTerms, setPayEarlyTerms] = useState(1)
+  const [payEarlyLoading, setPayEarlyLoading] = useState(false)
+  const [payEarlyResult, setPayEarlyResult] = useState<{ success: boolean; message: string; total?: number } | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const deviceHelpRef = useRef<HTMLDivElement>(null)
 
@@ -545,6 +550,47 @@ void collectibleInvoices.length
       alert('Payment collection failed. Please try again.')
     } finally {
       setPaymentLoading(null)
+    }
+  }
+
+  const handlePayEarly = async () => {
+    if (!payEarlySubscription) return
+    setPayEarlyLoading(true)
+    setPayEarlyResult(null)
+    try {
+      const token = localStorage.getItem('auth_token')
+      const response = await fetch('/api/billing/pay-early', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          subscriptionId: payEarlySubscription.id,
+          termsToCharge: payEarlyTerms
+        })
+      })
+      const data = await response.json()
+      if (response.ok) {
+        setPayEarlyResult({
+          success: true,
+          message: data.message || `Successfully billed for ${payEarlyTerms} future renewal(s)!`,
+          total: data.total
+        })
+      } else {
+        setPayEarlyResult({
+          success: false,
+          message: data.error || 'Failed to process early payment. Please try again.'
+        })
+      }
+    } catch (error) {
+      console.error('Pay early error:', error)
+      setPayEarlyResult({
+        success: false,
+        message: 'Failed to process early payment. Please try again.'
+      })
+    } finally {
+      setPayEarlyLoading(false)
     }
   }
 
@@ -1201,6 +1247,21 @@ void collectibleInvoices.length
                                         >
                                           <svg className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14v6m-3-3h6M6 10h2a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v2a2 2 0 002 2zm10 0h2a2 2 0 002-2V6a2 2 0 00-2-2h-2a2 2 0 00-2 2v2a2 2 0 002 2zM6 20h2a2 2 0 002-2v-2a2 2 0 00-2-2H6a2 2 0 00-2 2v2a2 2 0 002 2z" /></svg>
                                           Manage Add-ons
+                                        </button>
+                                      )}
+                                      {sub.status === 'active' && (
+                                        <button
+                                          onClick={() => {
+                                            setManageDropdownOpen(null)
+                                            setPayEarlySubscription(sub)
+                                            setPayEarlyTerms(1)
+                                            setPayEarlyResult(null)
+                                            setPayEarlyModalOpen(true)
+                                          }}
+                                          className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                                        >
+                                          <svg className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                                          Pay Early
                                         </button>
                                       )}
                                       {sub.status === 'active' && (
@@ -2298,6 +2359,148 @@ void collectibleInvoices.length
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {payEarlyModalOpen && payEarlySubscription && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-bold text-text">Pay Early</h3>
+                <button
+                  onClick={() => {
+                    setPayEarlyModalOpen(false)
+                    setPayEarlySubscription(null)
+                    setPayEarlyResult(null)
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <p className="text-sm text-muted mt-1">
+                {getPlanDisplayName(payEarlySubscription.planId)}
+              </p>
+            </div>
+
+            <div className="p-6 space-y-5">
+              {payEarlyResult ? (
+                <div className={`rounded-xl p-4 ${payEarlyResult.success ? 'bg-emerald-50 border border-emerald-100' : 'bg-red-50 border border-red-100'}`}>
+                  <div className="flex items-start gap-3">
+                    {payEarlyResult.success ? (
+                      <svg className="w-5 h-5 text-emerald-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    ) : (
+                      <svg className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    )}
+                    <div>
+                      <p className={`text-sm font-medium ${payEarlyResult.success ? 'text-emerald-800' : 'text-red-800'}`}>
+                        {payEarlyResult.success ? 'Payment Successful!' : 'Payment Failed'}
+                      </p>
+                      <p className={`text-xs mt-1 ${payEarlyResult.success ? 'text-emerald-700' : 'text-red-700'}`}>
+                        {payEarlyResult.message}
+                      </p>
+                      {payEarlyResult.total !== undefined && payEarlyResult.total !== null && (
+                        <p className="text-sm font-semibold text-emerald-800 mt-2">
+                          Amount charged: {formatCurrency(payEarlyResult.total)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  {payEarlyResult.success && (
+                    <button
+                      onClick={() => window.location.reload()}
+                      className="mt-4 w-full px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors"
+                      style={{ backgroundColor: '#10a37f' }}
+                    >
+                      Refresh Page
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+                    <div className="flex items-start gap-2">
+                      <svg className="w-5 h-5 text-blue-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                      <div className="text-sm text-blue-800">
+                        <p className="font-medium">Bill and Invoice for Future Renewals</p>
+                        <p className="text-xs mt-1">Pay ahead for upcoming billing cycles. Your payment method on file will be charged immediately.</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      How many renewal periods would you like to pay in advance?
+                    </label>
+                    <div className="grid grid-cols-4 gap-2">
+                      {[1, 2, 3, 6].map(n => (
+                        <button
+                          key={n}
+                          onClick={() => setPayEarlyTerms(n)}
+                          className={`py-2.5 rounded-lg text-sm font-medium border transition-all ${
+                            payEarlyTerms === n
+                              ? 'border-emerald-500 bg-emerald-50 text-emerald-700 shadow-sm'
+                              : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                          }`}
+                        >
+                          {n} {payEarlySubscription.billingPeriodUnit === 'month' ? (n === 1 ? 'Month' : 'Months') : (n === 1 ? 'Period' : 'Periods')}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="bg-gray-50 rounded-xl p-4 space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Plan amount per period</span>
+                      <span className="font-medium text-gray-900">{formatCurrency(payEarlySubscription.planAmount)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Number of periods</span>
+                      <span className="font-medium text-gray-900">x {payEarlyTerms}</span>
+                    </div>
+                    <div className="border-t border-gray-200 pt-2 flex justify-between text-sm">
+                      <span className="font-medium text-gray-700">Estimated total</span>
+                      <span className="font-bold text-gray-900">{formatCurrency(payEarlySubscription.planAmount * payEarlyTerms)}</span>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1">Final amount may vary if add-ons or discounts apply.</p>
+                  </div>
+
+                  <button
+                    onClick={handlePayEarly}
+                    disabled={payEarlyLoading}
+                    className="w-full px-4 py-3 text-sm font-medium text-white rounded-xl transition-all duration-200 disabled:opacity-50 active:scale-[0.97] shadow-md hover:shadow-lg"
+                    style={{ background: 'linear-gradient(135deg, #0d9668, #10a37f, #34d399)' }}
+                  >
+                    {payEarlyLoading ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        Processing...
+                      </span>
+                    ) : (
+                      `Pay ${formatCurrency(payEarlySubscription.planAmount * payEarlyTerms)} Now`
+                    )}
+                  </button>
+                </>
+              )}
+            </div>
+
+            {!payEarlyResult && (
+              <div className="px-6 pb-6">
+                <button
+                  onClick={() => {
+                    setPayEarlyModalOpen(false)
+                    setPayEarlySubscription(null)
+                  }}
+                  className="w-full px-4 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

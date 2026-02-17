@@ -1124,6 +1124,56 @@ app.post("/api/billing/collect-payment", async (req, res) => {
   }
 });
 
+app.post("/api/billing/pay-early", heavyApiLimiter, async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const token = authHeader.split(" ")[1];
+    const session = await storage.getSessionByToken(token);
+    if (!session) {
+      return res.status(401).json({ error: "Invalid session" });
+    }
+
+    const customer = await storage.getCustomer(session.customerId);
+    if (!customer) {
+      return res.status(404).json({ error: "Customer not found" });
+    }
+
+    const { subscriptionId, termsToCharge } = req.body;
+    if (!subscriptionId) {
+      return res.status(400).json({ error: "Subscription ID is required" });
+    }
+    if (!termsToCharge || termsToCharge < 1 || termsToCharge > 12) {
+      return res.status(400).json({ error: "Number of terms must be between 1 and 12" });
+    }
+
+    const { verifySubscriptionOwnership, billFutureRenewals } = await import('./services');
+    const owns = await verifySubscriptionOwnership(customer.email, subscriptionId);
+    if (!owns) {
+      return res.status(403).json({ error: "Subscription not found for this customer" });
+    }
+
+    const result = await billFutureRenewals(subscriptionId, termsToCharge);
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error || "Failed to process early payment" });
+    }
+
+    res.json({
+      success: true,
+      invoiceId: result.invoiceId,
+      total: result.total,
+      message: `Successfully billed for ${termsToCharge} future renewal(s)`,
+    });
+  } catch (error: any) {
+    console.error("Pay early error:", error);
+    res.status(500).json({ error: error.message || "Failed to process early payment" });
+  }
+});
+
 app.get("/api/billing/invoice/:invoiceId/pdf", async (req, res) => {
   try {
     const authHeader = req.headers.authorization;

@@ -1393,6 +1393,35 @@ export async function collectPaymentForInvoice(invoiceId: string): Promise<{ suc
   }
 }
 
+export async function billFutureRenewals(subscriptionId: string, termsToCharge: number): Promise<{ success: boolean; invoiceId?: string; total?: number; error?: string }> {
+  try {
+    if (termsToCharge < 1 || termsToCharge > 12) {
+      return { success: false, error: 'Number of terms must be between 1 and 12' };
+    }
+
+    const result = await chargebeeApiPost(`/subscriptions/${subscriptionId}/charge_future_renewals`, {
+      terms_to_charge: String(termsToCharge),
+      invoice_immediately: 'true',
+    });
+
+    if (result?.invoice) {
+      return {
+        success: true,
+        invoiceId: result.invoice.id,
+        total: result.invoice.total,
+      };
+    }
+    return { success: false, error: 'Failed to generate advance invoice' };
+  } catch (error: any) {
+    console.error('Error billing future renewals:', error);
+    const msg = error.message || 'Failed to bill future renewals';
+    if (msg.includes('advance_invoices_not_enabled') || msg.includes('not_enabled')) {
+      return { success: false, error: 'Advance invoicing is not enabled for this site. Please contact support.' };
+    }
+    return { success: false, error: msg };
+  }
+}
+
 export async function getInvoicePdfUrl(invoiceId: string): Promise<{ url: string; validTill: string } | null> {
   try {
     const result = await chargebeeApiPost(`/invoices/${invoiceId}/pdf`, {});

@@ -15,7 +15,7 @@ The design adheres to Nomad Internet's official branding with a modern SaaS aest
 ### Technical Implementations
 - **Authentication**: Supports both email/password and OTP-based passwordless sign-in, with a multi-step OTP verification process for sign-up and password reset.
 - **Customer Data Aggregation**: A unified service layer integrates data from multiple external APIs (Chargebee, Shopify, Shipstation, ThingSpace) to provide a holistic view of customer information, subscriptions, orders, and device statuses.
-- **Subscription & Billing**: Displays detailed subscription information, including ICCID/IMEI/MDN, and integrates with Chargebee for invoice viewing, payment collection, and payment method management, supporting subscription-grouped invoices and bulk payments.
+- **Subscription & Billing**: Displays detailed subscription information, including ICCID/IMEI/MDN, and integrates with Chargebee for invoice viewing, payment collection, payment method management, and early payment (Bill Future Renewals via `charge_future_renewals` API). Supports subscription-grouped invoices and bulk payments.
 - **Device Management**: The "Internet" tab offers real-time line status from ThingSpace, supports changing device plans, and includes a troubleshooting page for line restoration with automated recovery attempts and escalation options. Features also include device help options and comprehensive slow speed troubleshooting.
 - **AI Chatbot**: An integrated JADA AI chatbot, powered by OpenAI GPT-4o, provides contextual customer support.
 - **Activity Tracking**: Logs user login history and other account activities for enhanced security and user transparency.
