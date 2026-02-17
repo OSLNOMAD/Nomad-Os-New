@@ -1150,16 +1150,60 @@ app.post("/api/billing/pay-early", heavyApiLimiter, async (req, res) => {
       return res.status(400).json({ error: "Number of terms must be between 1 and 12" });
     }
 
-    const { verifySubscriptionOwnership, billFutureRenewals } = await import('./services');
+    const { verifySubscriptionOwnership, billFutureRenewals, chargebeeApiPost } = await import('./services');
     const owns = await verifySubscriptionOwnership(customer.email, subscriptionId);
     if (!owns) {
       return res.status(403).json({ error: "Subscription not found for this customer" });
     }
 
+    const { planId, planName } = req.body;
     const result = await billFutureRenewals(subscriptionId, termsToCharge);
 
     if (!result.success) {
+      try {
+        await storage.createEarlyPaymentLog({
+          customerId: session.customerId,
+          customerEmail: customer.email,
+          subscriptionId,
+          chargebeeCustomerId: customer.chargebeeCustomerId || undefined,
+          planId: planId || undefined,
+          planName: planName || undefined,
+          termsCharged: termsToCharge,
+          status: "failed",
+          errorMessage: result.error || "Failed to process early payment",
+        });
+      } catch (logErr) {
+        console.error("Failed to log early payment failure:", logErr);
+      }
       return res.status(400).json({ error: result.error || "Failed to process early payment" });
+    }
+
+    try {
+      await storage.createEarlyPaymentLog({
+        customerId: session.customerId,
+        customerEmail: customer.email,
+        subscriptionId,
+        chargebeeCustomerId: customer.chargebeeCustomerId || undefined,
+        planId: planId || undefined,
+        planName: planName || undefined,
+        termsCharged: termsToCharge,
+        invoiceId: result.invoiceId || undefined,
+        totalAmount: result.total || undefined,
+        status: "completed",
+      });
+    } catch (logErr) {
+      console.error("Failed to log early payment:", logErr);
+    }
+
+    try {
+      const totalFormatted = result.total ? `$${(result.total / 100).toFixed(2)}` : 'N/A';
+      await chargebeeApiPost('/comments', {
+        'entity_type': 'subscription',
+        'entity_id': subscriptionId,
+        'notes': `Customer paid early for ${termsToCharge} future renewal period(s) via the Customer Portal. Invoice ID: ${result.invoiceId || 'N/A'}. Total charged: ${totalFormatted}.`
+      });
+    } catch (commentErr) {
+      console.error("Failed to add Chargebee comment for early payment:", commentErr);
     }
 
     res.json({
@@ -4413,6 +4457,76 @@ app.get("/api/admin/addon-logs/export", async (req, res) => {
   } catch (error: any) {
     console.error("Export addon logs error:", error);
     res.status(500).json({ error: error.message || "Failed to export addon logs" });
+  }
+});
+
+app.get("/api/admin/early-payment-logs", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "No authorization token provided" });
+    }
+    const token = authHeader.split(" ")[1];
+    try {
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      if (!decoded.isAdmin) return res.status(403).json({ error: "Admin access required" });
+    } catch (e) {
+      return res.status(401).json({ error: "Invalid admin token" });
+    }
+
+    const logs = await storage.getAllEarlyPaymentLogs();
+    res.json({ earlyPaymentLogs: logs });
+  } catch (error: any) {
+    console.error("Get early payment logs error:", error);
+    res.status(500).json({ error: error.message || "Failed to get early payment logs" });
+  }
+});
+
+app.get("/api/admin/early-payment-logs/export", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "No authorization token provided" });
+    }
+    const token = authHeader.split(" ")[1];
+    try {
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      if (!decoded.isAdmin) return res.status(403).json({ error: "Admin access required" });
+    } catch (e) {
+      return res.status(401).json({ error: "Invalid admin token" });
+    }
+
+    const logs = await storage.getAllEarlyPaymentLogs();
+
+    const escapeCSV = (val: any) => {
+      if (val === null || val === undefined) return '';
+      const s = String(val);
+      if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+        return '"' + s.replace(/"/g, '""') + '"';
+      }
+      return s;
+    };
+
+    const headers = ['Date', 'Customer Email', 'Subscription ID', 'Plan', 'Terms Charged', 'Invoice ID', 'Total Amount', 'Status', 'Error'];
+    const rows = logs.map(log => [
+      log.createdAt ? new Date(log.createdAt).toISOString() : '',
+      escapeCSV(log.customerEmail),
+      escapeCSV(log.subscriptionId),
+      escapeCSV(log.planName || log.planId),
+      String(log.termsCharged),
+      escapeCSV(log.invoiceId),
+      log.totalAmount ? `$${(log.totalAmount / 100).toFixed(2)}` : '',
+      escapeCSV(log.status),
+      escapeCSV(log.errorMessage)
+    ].join(','));
+
+    const csv = [headers.join(','), ...rows].join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=early-payment-logs-${new Date().toISOString().split('T')[0]}.csv`);
+    res.send(csv);
+  } catch (error: any) {
+    console.error("Export early payment logs error:", error);
+    res.status(500).json({ error: error.message || "Failed to export early payment logs" });
   }
 });
 

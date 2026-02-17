@@ -1319,7 +1319,7 @@ export async function fetchCustomerFullData(email: string): Promise<CustomerFull
   };
 }
 
-async function chargebeeApiPost(endpoint: string, data: Record<string, string>): Promise<any> {
+export async function chargebeeApiPost(endpoint: string, data: Record<string, string>): Promise<any> {
   if (!CHARGEBEE_API_KEY || !CHARGEBEE_SITE) return null;
   
   const credentials = Buffer.from(`${CHARGEBEE_API_KEY}:`).toString('base64');

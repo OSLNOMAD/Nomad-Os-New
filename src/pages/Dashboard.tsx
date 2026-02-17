@@ -567,7 +567,9 @@ void collectibleInvoices.length
         },
         body: JSON.stringify({
           subscriptionId: payEarlySubscription.id,
-          termsToCharge: payEarlyTerms
+          termsToCharge: payEarlyTerms,
+          planId: payEarlySubscription.planId,
+          planName: getPlanDisplayName(payEarlySubscription.planId)
         })
       })
       const data = await response.json()
