@@ -6,7 +6,7 @@ import bcrypt from "bcryptjs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { storage } from "./storage";
-import { fetchCustomerFullData, fetchChargebeeCatalogItems, fetchChargebeeItemPrices, removeAddonFromSubscription, getSubscriptionCurrentItems, addTravelAddonToSubscription, addPrimeAddonToSubscription, verifySubscriptionOwnership, setApiLogContext, clearApiLogContext, addPromotionalCredit, buildZendeskCustomerInfoBlock } from "./services";
+import { fetchCustomerFullData, fetchChargebeeCatalogItems, fetchChargebeeItemPrices, removeAddonFromSubscription, getSubscriptionCurrentItems, addTravelAddonToSubscription, addPrimeAddonToSubscription, verifySubscriptionOwnership, setApiLogContext, clearApiLogContext, addPromotionalCredit, addChargebeeCustomerComment, buildZendeskCustomerInfoBlock } from "./services";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -5087,14 +5087,19 @@ app.post("/api/billing-resolution/accept-credit", heavyApiLimiter, async (req, r
     let chargebeeCreditId: string | null = null;
 
     if (resolution.chargebeeCustomerId && resolution.creditOffered && resolution.creditOffered > 0) {
+      const creditDesc = `Portal Billing Resolution - ${resolution.issueType}: ${resolution.issueDetails || "Customer accepted credit offer"}`;
       const creditResult = await addPromotionalCredit(
         resolution.chargebeeCustomerId,
         resolution.creditOffered,
-        `Portal Billing Resolution - ${resolution.issueType}: ${resolution.issueDetails || "Customer accepted credit offer"}`
+        creditDesc
       );
       if (creditResult.success) {
         creditApplied = true;
         chargebeeCreditId = creditResult.creditId || null;
+        await addChargebeeCustomerComment(
+          resolution.chargebeeCustomerId,
+          `Credit of $${(resolution.creditOffered / 100).toFixed(2)} applied via Customer Portal.\nReason: Billing Resolution — ${resolution.issueType}\nDetails: ${resolution.issueDetails || "Customer accepted credit offer"}\nResolution ID: ${resolutionId}`
+        );
       } else {
         console.error("Failed to apply Chargebee credit:", creditResult.error);
       }
@@ -5642,6 +5647,16 @@ app.post("/api/service-issue/accept-credit", heavyApiLimiter, async (req, res) =
       if (creditResult.success) {
         creditApplied = true;
         chargebeeCreditId = creditResult.creditId || null;
+        const commentLines = [
+          `Credit of $${(creditAmountCents / 100).toFixed(2)} applied via Customer Portal.`,
+          `Type: ${appliedCreditType === "goodwill" ? "Goodwill Credit (Slow Speed)" : "Downtime Credit (Service Outage)"}`,
+        ];
+        if (appliedCreditType !== "goodwill" && report.outageStart && report.outageEnd) {
+          commentLines.push(`Outage: ${report.outageStart.toISOString().split('T')[0]} to ${report.outageEnd.toISOString().split('T')[0]} (${report.outageDurationHours}h)`);
+        }
+        if (report.subscriptionId) commentLines.push(`Subscription: ${report.subscriptionId}`);
+        commentLines.push(`Service Issue Report #${report.id}`);
+        await addChargebeeCustomerComment(report.chargebeeCustomerId, commentLines.join("\n"));
       } else {
         console.error("Failed to apply credit:", creditResult.error);
       }
@@ -5991,6 +6006,15 @@ app.post("/api/admin/service-issues/:id/apply-credit", async (req, res) => {
       if (creditResult.success) {
         creditApplied = true;
         chargebeeCreditId = creditResult.creditId || null;
+        const commentLines = [
+          `Credit of $${(creditAmountCents / 100).toFixed(2)} manually applied by admin.`,
+          `Type: ${creditType || "downtime"} credit`,
+          `Applied by: ${decoded.email || "admin"}`,
+          `Service Issue Report #${reportId}`,
+        ];
+        if (adminNotes) commentLines.push(`Admin Notes: ${adminNotes}`);
+        if (report.subscriptionId) commentLines.push(`Subscription: ${report.subscriptionId}`);
+        await addChargebeeCustomerComment(report.chargebeeCustomerId, commentLines.join("\n"));
       }
     }
 

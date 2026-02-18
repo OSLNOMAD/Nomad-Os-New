@@ -1940,6 +1940,18 @@ export async function addPromotionalCredit(customerId: string, amountCents: numb
   }
 }
 
+export async function addChargebeeCustomerComment(customerId: string, comment: string): Promise<void> {
+  try {
+    await chargebeeApiPost('/comments', {
+      'entity_type': 'customer',
+      'entity_id': customerId,
+      'notes': comment
+    });
+  } catch (err) {
+    console.error('Failed to add Chargebee customer comment:', err);
+  }
+}
+
 export interface ResumeDeviceResult {
   success: boolean;
   requestId?: string;
@@ -2161,47 +2173,6 @@ export async function getAvailablePlans(): Promise<ServicePlan[] | null> {
   }
 }
 
-export interface AddCommentResult {
-  success: boolean;
-  error?: string;
-}
-
-export async function addChargebeeCustomerComment(
-  customerId: string,
-  comment: string
-): Promise<AddCommentResult> {
-  if (!CHARGEBEE_API_KEY || !CHARGEBEE_SITE) {
-    return { success: false, error: 'Chargebee not configured' };
-  }
-  
-  try {
-    const credentials = Buffer.from(`${CHARGEBEE_API_KEY}:`).toString('base64');
-    const formData = new URLSearchParams();
-    formData.append('entity_type', 'customer');
-    formData.append('entity_id', customerId);
-    formData.append('notes', comment);
-    
-    const response = await loggedFetch(`https://${CHARGEBEE_SITE}.chargebee.com/api/v2/comments`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Basic ${credentials}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: formData.toString()
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Chargebee comment error:', errorText);
-      return { success: false, error: `Failed to add comment: ${response.status}` };
-    }
-    
-    return { success: true };
-  } catch (error: any) {
-    console.error('Error adding Chargebee comment:', error);
-    return { success: false, error: error.message || 'Failed to add comment' };
-  }
-}
 
 // Fetch all items from Chargebee catalog (plans and add-ons), including archived
 export async function fetchChargebeeCatalogItems(): Promise<{
