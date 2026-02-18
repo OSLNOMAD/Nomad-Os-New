@@ -1290,21 +1290,20 @@ export async function buildZendeskCustomerInfoBlock(email: string, targetSubscri
     const chargebeeData = await fetchChargebeeData(email);
     const customer = chargebeeData.customers?.[0];
 
-    lines.push(`═══════════════════════════════════════`);
-    lines.push(`CUSTOMER ACCOUNT OVERVIEW`);
-    lines.push(`═══════════════════════════════════════`);
-    lines.push(`Email: ${email}`);
-    lines.push(`Name: ${customer ? `${customer.firstName} ${customer.lastName}`.trim() : "N/A"}`);
-    lines.push(`Phone: ${customer?.phone || "N/A"}`);
-    lines.push(`Chargebee Customer ID: ${customer?.id || "N/A"}`);
-    lines.push(`Account Created: ${customer?.createdAt ? new Date(customer.createdAt).toLocaleDateString() : "N/A"}`);
-    lines.push(`Total Subscriptions: ${chargebeeData.totalSubscriptions}`);
-    lines.push(`Total Invoices: ${chargebeeData.totalInvoices}`);
-    lines.push(`Total Amount Due: $${chargebeeData.totalDue.toFixed(2)}`);
+    const GRACE_PERIOD_DAYS = 4;
 
+    lines.push(`── CUSTOMER ──────────────────────────`);
+    lines.push(`Email: ${email}`);
+    const name = customer ? `${customer.firstName} ${customer.lastName}`.trim() : "";
+    if (name) lines.push(`Name: ${name}`);
+    if (customer?.phone) lines.push(`Phone: ${customer.phone}`);
+    if (customer?.id) lines.push(`Chargebee ID: ${customer.id}`);
+    if (customer?.createdAt) lines.push(`Account Created: ${new Date(customer.createdAt).toLocaleDateString()}`);
     if (customer?.paymentMethod) {
       lines.push(`Payment Method: ${customer.paymentMethod.type} (${customer.paymentMethod.status})`);
     }
+    lines.push(``);
+    lines.push(`Subscriptions: ${chargebeeData.totalSubscriptions} | Invoices: ${chargebeeData.totalInvoices} | Amount Due: $${chargebeeData.totalDue.toFixed(2)}`);
 
     const allSubs = chargebeeData.customers.flatMap(c => c.subscriptions);
     const targetSub = targetSubscriptionId ? allSubs.find(s => s.id === targetSubscriptionId) : null;
@@ -1312,74 +1311,81 @@ export async function buildZendeskCustomerInfoBlock(email: string, targetSubscri
 
     for (const sub of subsToShow) {
       lines.push(``);
-      lines.push(`═══════════════════════════════════════`);
-      lines.push(`SUBSCRIPTION: ${sub.id}${targetSub && sub.id === targetSub.id ? " (TICKET SUBJECT)" : ""}`);
-      lines.push(`═══════════════════════════════════════`);
+      lines.push(`── SUBSCRIPTION${targetSub && sub.id === targetSub.id ? " (TICKET SUBJECT)" : ""} ──────────────`);
+      lines.push(`ID: ${sub.id}`);
       lines.push(`Status: ${sub.status.toUpperCase()}`);
-
-      const planItem = sub.subscriptionItems?.find(i => i.itemType === 'plan');
-      lines.push(`Plan: ${sub.planId}`);
-      lines.push(`Plan Amount: $${sub.planAmount.toFixed(2)}/${sub.billingPeriodUnit || "month"}`);
+      lines.push(`Plan: ${sub.planId} — $${sub.planAmount.toFixed(2)}/${sub.billingPeriodUnit || "month"}`);
 
       const addonItems = sub.subscriptionItems?.filter(i => i.itemType === 'addon') || [];
       if (addonItems.length > 0) {
         lines.push(`Add-ons: ${addonItems.map(a => `${a.itemPriceId} ($${a.amount.toFixed(2)})`).join(", ")}`);
       }
 
-      lines.push(`Current Term: ${sub.currentTermStart ? new Date(sub.currentTermStart).toLocaleDateString() : "N/A"} - ${sub.currentTermEnd ? new Date(sub.currentTermEnd).toLocaleDateString() : "N/A"}`);
-      lines.push(`Next Billing Date: ${sub.nextBillingAt ? new Date(sub.nextBillingAt).toLocaleDateString() : "N/A"}`);
+      if (sub.currentTermStart && sub.currentTermEnd) {
+        lines.push(`Term: ${new Date(sub.currentTermStart).toLocaleDateString()} – ${new Date(sub.currentTermEnd).toLocaleDateString()}`);
+      }
+      if (sub.nextBillingAt) {
+        lines.push(`Next Billing: ${new Date(sub.nextBillingAt).toLocaleDateString()}`);
+      }
 
       if (sub.totalDues > 0) {
-        lines.push(`⚠️ PAST DUE: $${sub.totalDues.toFixed(2)} (${sub.dueInvoicesCount} invoice(s) due)`);
+        lines.push(``);
+        lines.push(`⚠ PAST DUE: $${sub.totalDues.toFixed(2)} (${sub.dueInvoicesCount} invoice(s))`);
         if (sub.dueSince) {
           const dueSinceDate = new Date(sub.dueSince);
           const daysPastDue = Math.floor((Date.now() - dueSinceDate.getTime()) / (1000 * 60 * 60 * 24));
-          lines.push(`Due Since: ${dueSinceDate.toLocaleDateString()} (${daysPastDue} days past due)`);
-          if (daysPastDue <= 7) {
-            lines.push(`Grace Period Status: WITHIN GRACE PERIOD (${7 - daysPastDue} days remaining)`);
+          lines.push(`Due Since: ${dueSinceDate.toLocaleDateString()} (${daysPastDue} day${daysPastDue !== 1 ? "s" : ""} past due)`);
+          if (daysPastDue <= GRACE_PERIOD_DAYS) {
+            lines.push(`Grace Period: ACTIVE (${GRACE_PERIOD_DAYS - daysPastDue} day${(GRACE_PERIOD_DAYS - daysPastDue) !== 1 ? "s" : ""} remaining)`);
           } else {
-            lines.push(`Grace Period Status: EXCEEDED GRACE PERIOD`);
+            lines.push(`Grace Period: EXCEEDED`);
           }
         }
-      } else {
-        lines.push(`Payment Status: Current (no outstanding dues)`);
       }
-
-      lines.push(`ICCID: ${sub.iccid || "N/A"}`);
-      lines.push(`IMEI: ${sub.imei || "N/A"}`);
-      lines.push(`MDN: ${sub.mdn || "N/A"}`);
 
       if (sub.hasAdvanceInvoice) {
-        lines.push(`Advance Invoice: Yes (paid early for future renewal(s))`);
+        lines.push(`Advance Invoice: Paid early for future renewal(s)`);
       }
       if (sub.hasScheduledChanges && sub.scheduledChanges) {
-        lines.push(`Scheduled Change: Plan changing to ${sub.scheduledChanges.planId} ($${sub.scheduledChanges.planAmount.toFixed(2)}) on next billing date`);
+        lines.push(`Scheduled Change: → ${sub.scheduledChanges.planId} ($${sub.scheduledChanges.planAmount.toFixed(2)}) on next billing`);
       }
       if (sub.cancelledAt) {
-        lines.push(`Cancelled At: ${new Date(sub.cancelledAt).toLocaleDateString()}`);
-        lines.push(`Cancel Reason: ${sub.cancelReason || "N/A"}`);
+        lines.push(`Cancelled: ${new Date(sub.cancelledAt).toLocaleDateString()}`);
+        if (sub.cancelReason) lines.push(`Cancel Reason: ${sub.cancelReason}`);
       }
 
-      if (sub.iccid && sub.iccid !== 'pending' && sub.iccid !== 'redemption_pending') {
+      const hasIccid = sub.iccid && sub.iccid !== '-' && sub.iccid !== 'pending' && sub.iccid !== 'redemption_pending';
+      const hasImei = sub.imei && sub.imei !== '-';
+      const hasMdn = sub.mdn && sub.mdn !== '-';
+
+      if (hasIccid || hasImei || hasMdn) {
+        lines.push(``);
+        lines.push(`── DEVICE ────────────────────────────`);
+        if (hasIccid) lines.push(`ICCID: ${sub.iccid}`);
+        if (hasImei) lines.push(`IMEI: ${sub.imei}`);
+        if (hasMdn) lines.push(`MDN: ${sub.mdn}`);
+      }
+
+      if (hasIccid) {
         try {
-          const device = await fetchThingspaceDevice(sub.iccid);
+          const device = await fetchThingspaceDevice(sub.iccid!);
           if (device) {
-            lines.push(``);
-            lines.push(`--- LINE STATUS (ThingSpace) ---`);
-            lines.push(`Line State: ${device.state?.toUpperCase() || "UNKNOWN"}`);
-            lines.push(`Connected: ${device.connected ? "Yes" : "No"}`);
-            if (device.ipAddress) lines.push(`IP Address: ${device.ipAddress}`);
-            if (device.lastConnectionDate) lines.push(`Last Connected: ${device.lastConnectionDate}`);
-            if (device.carrier) {
-              lines.push(`Carrier: ${device.carrier.name || "N/A"}`);
-              lines.push(`Service Plan (Carrier): ${device.carrier.servicePlan || "N/A"}`);
-              lines.push(`Carrier State: ${device.carrier.state || "N/A"}`);
+            const hasState = device.state && device.state.toUpperCase() !== "UNKNOWN";
+            if (hasState || device.connected) {
+              lines.push(``);
+              lines.push(`── LINE STATUS ───────────────────────`);
+              if (hasState) lines.push(`State: ${device.state!.toUpperCase()}`);
+              lines.push(`Connected: ${device.connected ? "Yes" : "No"}`);
+              if (device.ipAddress && device.ipAddress !== "0.0.0.0") lines.push(`IP: ${device.ipAddress}`);
+              if (device.lastConnectionDate) lines.push(`Last Connected: ${device.lastConnectionDate}`);
+              if (device.carrier) {
+                if (device.carrier.name) lines.push(`Carrier: ${device.carrier.name}`);
+                if (device.carrier.servicePlan) lines.push(`Service Plan: ${device.carrier.servicePlan}`);
+                if (device.carrier.state) lines.push(`Carrier State: ${device.carrier.state}`);
+              }
             }
-          } else {
-            lines.push(`Line Status: Could not retrieve from ThingSpace`);
           }
         } catch {
-          lines.push(`Line Status: Error retrieving from ThingSpace`);
         }
       }
     }
