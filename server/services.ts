@@ -1284,6 +1284,120 @@ export async function fetchThingspaceDevice(iccid: string): Promise<ThingspaceDe
   }
 }
 
+export async function buildZendeskCustomerInfoBlock(email: string, targetSubscriptionId?: string | null): Promise<string> {
+  const lines: string[] = [];
+  try {
+    const chargebeeData = await fetchChargebeeData(email);
+    const customer = chargebeeData.customers?.[0];
+
+    lines.push(`═══════════════════════════════════════`);
+    lines.push(`CUSTOMER ACCOUNT OVERVIEW`);
+    lines.push(`═══════════════════════════════════════`);
+    lines.push(`Email: ${email}`);
+    lines.push(`Name: ${customer ? `${customer.firstName} ${customer.lastName}`.trim() : "N/A"}`);
+    lines.push(`Phone: ${customer?.phone || "N/A"}`);
+    lines.push(`Chargebee Customer ID: ${customer?.id || "N/A"}`);
+    lines.push(`Account Created: ${customer?.createdAt ? new Date(customer.createdAt).toLocaleDateString() : "N/A"}`);
+    lines.push(`Total Subscriptions: ${chargebeeData.totalSubscriptions}`);
+    lines.push(`Total Invoices: ${chargebeeData.totalInvoices}`);
+    lines.push(`Total Amount Due: $${chargebeeData.totalDue.toFixed(2)}`);
+
+    if (customer?.paymentMethod) {
+      lines.push(`Payment Method: ${customer.paymentMethod.type} (${customer.paymentMethod.status})`);
+    }
+
+    const allSubs = chargebeeData.customers.flatMap(c => c.subscriptions);
+    const targetSub = targetSubscriptionId ? allSubs.find(s => s.id === targetSubscriptionId) : null;
+    const subsToShow = targetSub ? [targetSub] : allSubs;
+
+    for (const sub of subsToShow) {
+      lines.push(``);
+      lines.push(`═══════════════════════════════════════`);
+      lines.push(`SUBSCRIPTION: ${sub.id}${targetSub && sub.id === targetSub.id ? " (TICKET SUBJECT)" : ""}`);
+      lines.push(`═══════════════════════════════════════`);
+      lines.push(`Status: ${sub.status.toUpperCase()}`);
+
+      const planItem = sub.subscriptionItems?.find(i => i.itemType === 'plan');
+      lines.push(`Plan: ${sub.planId}`);
+      lines.push(`Plan Amount: $${sub.planAmount.toFixed(2)}/${sub.billingPeriodUnit || "month"}`);
+
+      const addonItems = sub.subscriptionItems?.filter(i => i.itemType === 'addon') || [];
+      if (addonItems.length > 0) {
+        lines.push(`Add-ons: ${addonItems.map(a => `${a.itemPriceId} ($${a.amount.toFixed(2)})`).join(", ")}`);
+      }
+
+      lines.push(`Current Term: ${sub.currentTermStart ? new Date(sub.currentTermStart).toLocaleDateString() : "N/A"} - ${sub.currentTermEnd ? new Date(sub.currentTermEnd).toLocaleDateString() : "N/A"}`);
+      lines.push(`Next Billing Date: ${sub.nextBillingAt ? new Date(sub.nextBillingAt).toLocaleDateString() : "N/A"}`);
+
+      if (sub.totalDues > 0) {
+        lines.push(`⚠️ PAST DUE: $${sub.totalDues.toFixed(2)} (${sub.dueInvoicesCount} invoice(s) due)`);
+        if (sub.dueSince) {
+          const dueSinceDate = new Date(sub.dueSince);
+          const daysPastDue = Math.floor((Date.now() - dueSinceDate.getTime()) / (1000 * 60 * 60 * 24));
+          lines.push(`Due Since: ${dueSinceDate.toLocaleDateString()} (${daysPastDue} days past due)`);
+          if (daysPastDue <= 7) {
+            lines.push(`Grace Period Status: WITHIN GRACE PERIOD (${7 - daysPastDue} days remaining)`);
+          } else {
+            lines.push(`Grace Period Status: EXCEEDED GRACE PERIOD`);
+          }
+        }
+      } else {
+        lines.push(`Payment Status: Current (no outstanding dues)`);
+      }
+
+      lines.push(`ICCID: ${sub.iccid || "N/A"}`);
+      lines.push(`IMEI: ${sub.imei || "N/A"}`);
+      lines.push(`MDN: ${sub.mdn || "N/A"}`);
+
+      if (sub.hasAdvanceInvoice) {
+        lines.push(`Advance Invoice: Yes (paid early for future renewal(s))`);
+      }
+      if (sub.hasScheduledChanges && sub.scheduledChanges) {
+        lines.push(`Scheduled Change: Plan changing to ${sub.scheduledChanges.planId} ($${sub.scheduledChanges.planAmount.toFixed(2)}) on next billing date`);
+      }
+      if (sub.cancelledAt) {
+        lines.push(`Cancelled At: ${new Date(sub.cancelledAt).toLocaleDateString()}`);
+        lines.push(`Cancel Reason: ${sub.cancelReason || "N/A"}`);
+      }
+
+      if (sub.iccid && sub.iccid !== 'pending' && sub.iccid !== 'redemption_pending') {
+        try {
+          const device = await fetchThingspaceDevice(sub.iccid);
+          if (device) {
+            lines.push(``);
+            lines.push(`--- LINE STATUS (ThingSpace) ---`);
+            lines.push(`Line State: ${device.state?.toUpperCase() || "UNKNOWN"}`);
+            lines.push(`Connected: ${device.connected ? "Yes" : "No"}`);
+            if (device.ipAddress) lines.push(`IP Address: ${device.ipAddress}`);
+            if (device.lastConnectionDate) lines.push(`Last Connected: ${device.lastConnectionDate}`);
+            if (device.carrier) {
+              lines.push(`Carrier: ${device.carrier.name || "N/A"}`);
+              lines.push(`Service Plan (Carrier): ${device.carrier.servicePlan || "N/A"}`);
+              lines.push(`Carrier State: ${device.carrier.state || "N/A"}`);
+            }
+          } else {
+            lines.push(`Line Status: Could not retrieve from ThingSpace`);
+          }
+        } catch {
+          lines.push(`Line Status: Error retrieving from ThingSpace`);
+        }
+      }
+    }
+
+    if (!targetSub && allSubs.length === 0) {
+      lines.push(``);
+      lines.push(`No subscriptions found for this customer.`);
+    }
+
+  } catch (error) {
+    console.error("Error building Zendesk customer info block:", error);
+    lines.push(`[Error fetching full customer data - basic info only]`);
+    lines.push(`Email: ${email}`);
+  }
+
+  return lines.join("\n");
+}
+
 export async function fetchCustomerFullData(email: string): Promise<CustomerFullData> {
   const [chargebee, shopifyOrders] = await Promise.all([
     fetchChargebeeData(email),

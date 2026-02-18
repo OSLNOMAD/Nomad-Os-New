@@ -6,7 +6,7 @@ import bcrypt from "bcryptjs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { storage } from "./storage";
-import { fetchCustomerFullData, fetchChargebeeCatalogItems, fetchChargebeeItemPrices, removeAddonFromSubscription, getSubscriptionCurrentItems, addTravelAddonToSubscription, addPrimeAddonToSubscription, verifySubscriptionOwnership, setApiLogContext, clearApiLogContext, addPromotionalCredit } from "./services";
+import { fetchCustomerFullData, fetchChargebeeCatalogItems, fetchChargebeeItemPrices, removeAddonFromSubscription, getSubscriptionCurrentItems, addTravelAddonToSubscription, addPrimeAddonToSubscription, verifySubscriptionOwnership, setApiLogContext, clearApiLogContext, addPromotionalCredit, buildZendeskCustomerInfoBlock } from "./services";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1845,6 +1845,13 @@ app.post("/api/troubleshooting/submit-ticket", customerApiLimiter, async (req, r
 
     let zendeskTicketId: string | null = null;
 
+    let customerInfoBlock = "";
+    try {
+      customerInfoBlock = await buildZendeskCustomerInfoBlock(customerEmail, subscriptionId);
+    } catch (err) {
+      console.error("Failed to build customer info block:", err);
+    }
+
     if (zendeskSubdomain && zendeskEmail && zendeskToken) {
       try {
         const issueLabel = issueType === 'slow_speed' ? 'Slow Speed' : issueType === 'no_internet' ? 'No Internet' : issueType === 'line_restoration' ? 'Line Restoration' : (issueType || 'General').replace(/_/g, ' ');
@@ -1920,6 +1927,31 @@ ACTION REQUIRED: Tier 1 Support - Please follow up with customer within 24 hours
           const zendeskData = await zendeskResponse.json() as any;
           zendeskTicketId = zendeskData.ticket?.id?.toString();
           console.log("Troubleshooting Zendesk ticket created:", zendeskTicketId);
+
+          if (zendeskTicketId && customerInfoBlock) {
+            try {
+              await fetch(
+                `https://${zendeskSubdomain}.zendesk.com/api/v2/tickets/${zendeskTicketId}.json`,
+                {
+                  method: "PUT",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": "Basic " + Buffer.from(`${zendeskEmail}/token:${zendeskToken}`).toString("base64")
+                  },
+                  body: JSON.stringify({
+                    ticket: {
+                      comment: {
+                        body: customerInfoBlock,
+                        public: false
+                      }
+                    }
+                  })
+                }
+              );
+            } catch (noteErr) {
+              console.error("Failed to add customer info internal note:", noteErr);
+            }
+          }
         } else {
           console.error("Troubleshooting Zendesk ticket creation failed:", await zendeskResponse.text());
         }
@@ -3319,6 +3351,13 @@ app.post("/api/cancellation/submit-contact", async (req, res) => {
     let zendeskTicketId = null;
     let slackMessageTs = null;
 
+    let customerInfoBlock = "";
+    try {
+      customerInfoBlock = await buildZendeskCustomerInfoBlock(customerEmail, request.subscriptionId);
+    } catch (err) {
+      console.error("Failed to build customer info block:", err);
+    }
+
     if (zendeskSubdomain && zendeskEmail && zendeskToken) {
       try {
         const discountStatus = request.retentionOfferAccepted === true 
@@ -3401,6 +3440,31 @@ ACTION REQUIRED: Please follow up with customer within 24 hours to complete canc
           const zendeskData = await zendeskResponse.json();
           zendeskTicketId = zendeskData.ticket?.id?.toString();
           console.log("Zendesk ticket created:", zendeskTicketId);
+
+          if (zendeskTicketId && customerInfoBlock) {
+            try {
+              await fetch(
+                `https://${zendeskSubdomain}.zendesk.com/api/v2/tickets/${zendeskTicketId}.json`,
+                {
+                  method: "PUT",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": "Basic " + Buffer.from(`${zendeskEmail}/token:${zendeskToken}`).toString("base64")
+                  },
+                  body: JSON.stringify({
+                    ticket: {
+                      comment: {
+                        body: customerInfoBlock,
+                        public: false
+                      }
+                    }
+                  })
+                }
+              );
+            } catch (noteErr) {
+              console.error("Failed to add customer info internal note:", noteErr);
+            }
+          }
         } else {
           console.error("Zendesk ticket creation failed:", await zendeskResponse.text());
         }
@@ -5124,6 +5188,13 @@ app.post("/api/billing-resolution/escalate", heavyApiLimiter, async (req, res) =
     const zendeskEmail = process.env.ZENDESK_EMAIL;
     const zendeskToken = process.env.ZENDESK_API_TOKEN;
 
+    let customerInfoBlock = "";
+    try {
+      customerInfoBlock = await buildZendeskCustomerInfoBlock(customerEmail, resolution.subscriptionId);
+    } catch (err) {
+      console.error("Failed to build customer info block:", err);
+    }
+
     if (zendeskSubdomain && zendeskEmail && zendeskToken) {
       try {
         const groupIdSetting = await storage.getPortalSetting("zendesk_troubleshooting_group_id");
@@ -5196,6 +5267,31 @@ ACTION REQUIRED: Review billing issue and respond to customer within 24 hours.`;
           const zendeskData = await zendeskResponse.json() as any;
           zendeskTicketId = zendeskData.ticket?.id?.toString();
           console.log("Billing resolution Zendesk ticket created:", zendeskTicketId);
+
+          if (zendeskTicketId && customerInfoBlock) {
+            try {
+              await fetch(
+                `https://${zendeskSubdomain}.zendesk.com/api/v2/tickets/${zendeskTicketId}.json`,
+                {
+                  method: "PUT",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": "Basic " + Buffer.from(`${zendeskEmail}/token:${zendeskToken}`).toString("base64")
+                  },
+                  body: JSON.stringify({
+                    ticket: {
+                      comment: {
+                        body: customerInfoBlock,
+                        public: false
+                      }
+                    }
+                  })
+                }
+              );
+            } catch (noteErr) {
+              console.error("Failed to add customer info internal note:", noteErr);
+            }
+          }
 
           if (proofFileData && proofFileName && zendeskTicketId) {
             try {
@@ -5596,6 +5692,13 @@ app.post("/api/service-issue/escalate", heavyApiLimiter, async (req, res) => {
     const zendeskEmail = process.env.ZENDESK_EMAIL;
     const zendeskApiToken = process.env.ZENDESK_API_TOKEN;
 
+    let customerInfoBlock = "";
+    try {
+      customerInfoBlock = await buildZendeskCustomerInfoBlock(report.customerEmail, report.subscriptionId);
+    } catch (err) {
+      console.error("Failed to build customer info block:", err);
+    }
+
     if (zendeskSubdomain && zendeskEmail && zendeskApiToken) {
       try {
         const categoryLabel = report.issueCategory === "no_connection" ? "No Connection" : report.issueCategory === "slow_speeds" ? "Slow Speeds" : "Other";
@@ -5626,7 +5729,7 @@ app.post("/api/service-issue/escalate", heavyApiLimiter, async (req, res) => {
             body: JSON.stringify({
               ticket: {
                 subject: `Service Issue - ${categoryLabel} - ${report.customerEmail}`,
-                comment: { body },
+                comment: { body, public: false },
                 requester: { email: report.customerEmail },
                 priority: report.cooldownBlocked ? "normal" : "high",
                 tags: ["service_issue", report.issueCategory, "portal_submission"],
@@ -5638,6 +5741,31 @@ app.post("/api/service-issue/escalate", heavyApiLimiter, async (req, res) => {
         if (zendeskResponse.ok) {
           const zendeskData = await zendeskResponse.json() as any;
           zendeskTicketId = zendeskData.ticket?.id?.toString() || null;
+
+          if (zendeskTicketId && customerInfoBlock) {
+            try {
+              await fetch(
+                `https://${zendeskSubdomain}.zendesk.com/api/v2/tickets/${zendeskTicketId}.json`,
+                {
+                  method: "PUT",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": "Basic " + Buffer.from(`${zendeskEmail}/token:${zendeskApiToken}`).toString("base64")
+                  },
+                  body: JSON.stringify({
+                    ticket: {
+                      comment: {
+                        body: customerInfoBlock,
+                        public: false
+                      }
+                    }
+                  })
+                }
+              );
+            } catch (noteErr) {
+              console.error("Failed to add customer info internal note:", noteErr);
+            }
+          }
         }
       } catch (err) {
         console.error("Zendesk ticket creation failed:", err);
@@ -5685,6 +5813,13 @@ app.post("/api/service-issue/submit-ticket", customerApiLimiter, async (req, res
     const zendeskEmail = process.env.ZENDESK_EMAIL;
     const zendeskApiToken = process.env.ZENDESK_API_TOKEN;
 
+    let customerInfoBlock = "";
+    try {
+      customerInfoBlock = await buildZendeskCustomerInfoBlock(report.customerEmail, report.subscriptionId);
+    } catch (err) {
+      console.error("Failed to build customer info block:", err);
+    }
+
     if (zendeskSubdomain && zendeskEmail && zendeskApiToken) {
       try {
         const body = [
@@ -5707,7 +5842,7 @@ app.post("/api/service-issue/submit-ticket", customerApiLimiter, async (req, res
             body: JSON.stringify({
               ticket: {
                 subject: `Active Outage - Troubleshooting Needed - ${report.customerEmail}`,
-                comment: { body },
+                comment: { body, public: false },
                 requester: { email: report.customerEmail },
                 priority: "urgent",
                 tags: ["active_outage", "troubleshooting", "portal_submission"],
@@ -5719,6 +5854,31 @@ app.post("/api/service-issue/submit-ticket", customerApiLimiter, async (req, res
         if (zendeskResponse.ok) {
           const zendeskData = await zendeskResponse.json() as any;
           zendeskTicketId = zendeskData.ticket?.id?.toString() || null;
+
+          if (zendeskTicketId && customerInfoBlock) {
+            try {
+              await fetch(
+                `https://${zendeskSubdomain}.zendesk.com/api/v2/tickets/${zendeskTicketId}.json`,
+                {
+                  method: "PUT",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": "Basic " + Buffer.from(`${zendeskEmail}/token:${zendeskApiToken}`).toString("base64")
+                  },
+                  body: JSON.stringify({
+                    ticket: {
+                      comment: {
+                        body: customerInfoBlock,
+                        public: false
+                      }
+                    }
+                  })
+                }
+              );
+            } catch (noteErr) {
+              console.error("Failed to add customer info internal note:", noteErr);
+            }
+          }
         }
       } catch (err) {
         console.error("Zendesk ticket creation failed:", err);
