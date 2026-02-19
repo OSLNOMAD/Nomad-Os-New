@@ -1485,7 +1485,7 @@ export default function Troubleshoot() {
                   <>
                     <p className="text-lg font-medium" style={{ color: '#0f172a' }}>Restoring Your Line</p>
                     <p className="text-gray-500 mt-2">
-                      We found that your internet line is currently suspended. We're restoring it now.<br/>
+                      We found something that may be affecting your connection. We're correcting it now.<br/>
                       This usually takes about 2 minutes.
                     </p>
                   </>
@@ -1555,7 +1555,7 @@ export default function Troubleshoot() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               </div>
-              <p className="text-xl font-bold mb-2" style={{ color: '#10a37f' }}>Your Line is Now Active!</p>
+              <p className="text-xl font-bold mb-2" style={{ color: '#10a37f' }}>Your service looks good on our end</p>
               
               <div className="bg-green-50 border border-green-200 rounded-lg p-4 mt-4 mb-6 text-left">
                 <p className="font-medium text-green-800 mb-2">Please reboot your modem now:</p>
