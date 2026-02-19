@@ -1483,7 +1483,7 @@ export default function Troubleshoot() {
                 
                 {step === 'waiting_first' ? (
                   <>
-                    <p className="text-lg font-medium" style={{ color: '#0f172a' }}>Restoring Your Line</p>
+                    <p className="text-lg font-medium" style={{ color: '#0f172a' }}>Working to Restore Your Internet</p>
                     <p className="text-gray-500 mt-2">
                       We found something that may be affecting your connection. We're correcting it now.<br/>
                       This usually takes about 2 minutes.
