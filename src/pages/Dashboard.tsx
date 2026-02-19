@@ -2032,14 +2032,14 @@ void collectibleInvoices.length
                                 lineStatus.color === 'yellow' ? 'text-yellow-800' :
                                 'text-red-800'
                               }`}>
-                                {lineStatus.color === 'red' ? 'Your service needs attention' : `Internet ${lineStatus.label}`}
+                                {lineStatus.color === 'red' ? 'Your service needs attention' : lineStatus.color === 'green' ? 'Everything looks good on our end' : `Internet ${lineStatus.label}`}
                               </p>
                               <p className={`text-sm ${
                                 lineStatus.color === 'green' ? 'text-green-600' :
                                 lineStatus.color === 'yellow' ? 'text-yellow-600' :
                                 'text-red-600'
                               }`}>
-                                {lineStatus.color === 'red' ? 'Click below to fix it.' : lineState ? `Line Status: ${lineState}` : ''}
+                                {lineStatus.color === 'red' ? 'Click below to fix it.' : lineStatus.color === 'green' ? '' : lineState ? `Line Status: ${lineState}` : ''}
                               </p>
                             </div>
                             {device?.ipAddress && lineStatus.color === 'green' && (
