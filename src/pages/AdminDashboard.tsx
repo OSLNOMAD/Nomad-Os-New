@@ -146,7 +146,7 @@ export default function AdminDashboard() {
   const [responseText, setResponseText] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [filter, setFilter] = useState<'all' | 'pending' | 'responded'>('all')
-  const [activeTab, setActiveTab] = useState<'feedback' | 'cancellations' | 'pause_logs' | 'plan_changes' | 'addon_logs' | 'api_logs' | 'payment_analysis' | 'billing_resolutions' | 'service_issues' | 'early_payments' | 'settings'>('feedback')
+  const [activeTab, setActiveTab] = useState<'feedback' | 'cancellations' | 'pause_logs' | 'plan_changes' | 'addon_logs' | 'api_logs' | 'payment_analysis' | 'billing_resolutions' | 'service_issues' | 'early_payments' | 'qr_access' | 'settings'>('feedback')
   const [openNavGroup, setOpenNavGroup] = useState<string | null>('customer')
   const [settings, setSettings] = useState<PortalSetting[]>([])
   const [settingsLoading, setSettingsLoading] = useState(false)
@@ -192,6 +192,11 @@ export default function AdminDashboard() {
   const [cancellationGroupId, setCancellationGroupId] = useState('')
   const [cancellationAssigneeId, setCancellationAssigneeId] = useState('')
   const [savingZendesk, setSavingZendesk] = useState(false)
+  const [qrAccessGrants, setQrAccessGrants] = useState<any[]>([])
+  const [qrAccessLoading, setQrAccessLoading] = useState(false)
+  const [qrAuditLogs, setQrAuditLogs] = useState<any[]>([])
+  const [qrNewEmail, setQrNewEmail] = useState('')
+  const [qrGranting, setQrGranting] = useState(false)
   const navigate = useNavigate()
 
   const adminUser = JSON.parse(localStorage.getItem('admin_user') || '{}')
@@ -222,6 +227,9 @@ export default function AdminDashboard() {
       fetchApiLogs()
     } else if (activeTab === 'early_payments') {
       fetchEarlyPaymentLogs()
+    } else if (activeTab === 'qr_access') {
+      fetchQrAccessGrants()
+      fetchQrAuditLogs()
     }
   }, [activeTab])
 
@@ -591,6 +599,85 @@ export default function AdminDashboard() {
       setError('Failed to load early payment logs')
     } finally {
       setEarlyPaymentLogsLoading(false)
+    }
+  }
+
+  const fetchQrAccessGrants = async () => {
+    setQrAccessLoading(true)
+    try {
+      const token = localStorage.getItem('admin_token')
+      const response = await fetch('/api/admin/qr-access', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setQrAccessGrants(data.grants || [])
+      }
+    } catch (err) {
+      setError('Failed to load QR access grants')
+    } finally {
+      setQrAccessLoading(false)
+    }
+  }
+
+  const fetchQrAuditLogs = async () => {
+    try {
+      const token = localStorage.getItem('admin_token')
+      const response = await fetch('/api/admin/qr-audit-logs', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setQrAuditLogs(data.logs || [])
+      }
+    } catch (err) {
+      console.error('Failed to load QR audit logs')
+    }
+  }
+
+  const handleGrantQrAccess = async () => {
+    if (!qrNewEmail.trim()) return
+    setQrGranting(true)
+    try {
+      const token = localStorage.getItem('admin_token')
+      const response = await fetch('/api/admin/qr-access/grant', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminEmail: qrNewEmail.trim() })
+      })
+      if (response.ok) {
+        setQrNewEmail('')
+        fetchQrAccessGrants()
+        fetchQrAuditLogs()
+      } else {
+        const data = await response.json()
+        setError(data.error || 'Failed to grant access')
+      }
+    } catch (err) {
+      setError('Failed to grant access')
+    } finally {
+      setQrGranting(false)
+    }
+  }
+
+  const handleRevokeQrAccess = async (adminEmail: string) => {
+    if (!confirm(`Revoke QR App access for ${adminEmail}?`)) return
+    try {
+      const token = localStorage.getItem('admin_token')
+      const response = await fetch('/api/admin/qr-access/revoke', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminEmail })
+      })
+      if (response.ok) {
+        fetchQrAccessGrants()
+        fetchQrAuditLogs()
+      } else {
+        const data = await response.json()
+        setError(data.error || 'Failed to revoke access')
+      }
+    } catch (err) {
+      setError('Failed to revoke access')
     }
   }
 
@@ -977,6 +1064,7 @@ export default function AdminDashboard() {
                 label: 'System',
                 items: [
                   { key: 'api_logs' as const, label: 'API Logs' },
+                  { key: 'qr_access' as const, label: 'Nomad QR Access' },
                   { key: 'settings' as const, label: 'Settings' },
                 ],
               },
@@ -1952,6 +2040,140 @@ export default function AdminDashboard() {
                           </tr>
                         ))
                       )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'qr_access' && (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">Nomad QR App Access</h2>
+              <p className="text-gray-600">Manage which admin users can access the internal QR device label tool</p>
+            </div>
+
+            <div className="bg-white rounded-lg border border-gray-200 p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Grant Access</h3>
+              <div className="flex gap-3 items-end">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Admin Email</label>
+                  <input
+                    type="email"
+                    value={qrNewEmail}
+                    onChange={(e) => setQrNewEmail(e.target.value)}
+                    placeholder="admin@nomadinternet.com"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    onKeyDown={(e) => e.key === 'Enter' && handleGrantQrAccess()}
+                  />
+                </div>
+                <button
+                  onClick={handleGrantQrAccess}
+                  disabled={qrGranting || !qrNewEmail.trim()}
+                  className="px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50 whitespace-nowrap"
+                  style={{ background: 'linear-gradient(135deg, #10a37f 0%, #0d8a6a 100%)' }}
+                >
+                  {qrGranting ? 'Granting...' : 'Grant Access'}
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">The user must already have an admin account. Access allows them to use the QR App at /internal/nomadQRapp</p>
+            </div>
+
+            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900">Active Access Grants</h3>
+              </div>
+              {qrAccessLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2" style={{ borderColor: '#10a37f' }}></div>
+                </div>
+              ) : (
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Granted By</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Granted At</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {qrAccessGrants.length === 0 ? (
+                      <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-500">No access grants yet</td></tr>
+                    ) : (
+                      qrAccessGrants.map((grant: any) => (
+                        <tr key={grant.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm text-gray-900 font-medium">{grant.adminEmail}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{grant.grantedBy}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{new Date(grant.grantedAt).toLocaleDateString()}</td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              grant.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                            }`}>
+                              {grant.isActive ? 'Active' : 'Revoked'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            {grant.isActive && (
+                              <button
+                                onClick={() => handleRevokeQrAccess(grant.adminEmail)}
+                                className="text-sm text-red-600 hover:text-red-800 font-medium"
+                              >
+                                Revoke
+                              </button>
+                            )}
+                            {!grant.isActive && (
+                              <span className="text-xs text-gray-400">Revoked by {grant.revokedBy} on {new Date(grant.revokedAt).toLocaleDateString()}</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {qrAuditLogs.length > 0 && (
+              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-200">
+                  <h3 className="text-lg font-semibold text-gray-900">Recent Activity</h3>
+                </div>
+                <div className="max-h-96 overflow-y-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50 sticky top-0">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Performed By</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Details</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {qrAuditLogs.slice(0, 50).map((log: any) => (
+                        <tr key={log.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-2 text-xs text-gray-500 whitespace-nowrap">
+                            {new Date(log.createdAt).toLocaleDateString()} {new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </td>
+                          <td className="px-4 py-2">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                              log.action === 'grant_access' ? 'bg-green-100 text-green-800' :
+                              log.action === 'revoke_access' ? 'bg-red-100 text-red-800' :
+                              log.action === 'create_device' ? 'bg-blue-100 text-blue-800' :
+                              log.action === 'print_label' ? 'bg-purple-100 text-purple-800' :
+                              log.action === 'reveal_password' ? 'bg-yellow-100 text-yellow-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {log.action.replace(/_/g, ' ')}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2 text-sm text-gray-600">{log.performedBy}</td>
+                          <td className="px-4 py-2 text-sm text-gray-500">{log.details}</td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>

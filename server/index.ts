@@ -6307,6 +6307,243 @@ app.post("/api/subscription/addons/remove", heavyApiLimiter, async (req, res) =>
   }
 });
 
+// ==================== NOMAD QR APP - INTERNAL ROUTES ====================
+
+const verifyQrAccess = async (req: express.Request, res: express.Response): Promise<string | null> => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    res.status(401).json({ error: "No authorization token provided" });
+    return null;
+  }
+  const token = authHeader.split(" ")[1];
+  try {
+    const decoded: any = jwt.verify(token, JWT_SECRET);
+    if (!decoded.isAdmin) {
+      res.status(403).json({ error: "Admin access required" });
+      return null;
+    }
+    const grant = await storage.getQrAccessGrant(decoded.email);
+    if (!grant) {
+      res.status(403).json({ error: "QR App access not granted. Contact your administrator." });
+      return null;
+    }
+    return decoded.email;
+  } catch (e) {
+    res.status(401).json({ error: "Invalid token" });
+    return null;
+  }
+};
+
+const verifyAdminToken = (req: express.Request, res: express.Response): string | null => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    res.status(401).json({ error: "No authorization token provided" });
+    return null;
+  }
+  const token = authHeader.split(" ")[1];
+  try {
+    const decoded: any = jwt.verify(token, JWT_SECRET);
+    if (!decoded.isAdmin) {
+      res.status(403).json({ error: "Admin access required" });
+      return null;
+    }
+    return decoded.email;
+  } catch (e) {
+    res.status(401).json({ error: "Invalid token" });
+    return null;
+  }
+};
+
+app.get("/api/internal/qr/check-access", async (req, res) => {
+  try {
+    const email = await verifyQrAccess(req, res);
+    if (!email) return;
+    res.json({ hasAccess: true, email });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to check access" });
+  }
+});
+
+app.get("/api/internal/qr/devices", async (req, res) => {
+  try {
+    const email = await verifyQrAccess(req, res);
+    if (!email) return;
+    const { search } = req.query;
+    let records;
+    if (search && typeof search === 'string' && search.trim()) {
+      records = await storage.searchQrDeviceRecords(search.trim());
+    } else {
+      records = await storage.getAllQrDeviceRecords();
+    }
+    const safeRecords = records.map(r => ({ ...r, password: '••••••••' }));
+    res.json({ devices: safeRecords });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to get devices" });
+  }
+});
+
+app.get("/api/internal/qr/device/:imei", async (req, res) => {
+  try {
+    const email = await verifyQrAccess(req, res);
+    if (!email) return;
+    const record = await storage.getQrDeviceByImei(req.params.imei);
+    if (!record) return res.status(404).json({ error: "Device not found" });
+    const safeRecord = { ...record, password: '••••••••' };
+    res.json({ device: safeRecord });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to get device" });
+  }
+});
+
+app.post("/api/internal/qr/device/:imei/reveal", async (req, res) => {
+  try {
+    const email = await verifyQrAccess(req, res);
+    if (!email) return;
+    const record = await storage.getQrDeviceByImei(req.params.imei);
+    if (!record) return res.status(404).json({ error: "Device not found" });
+    await storage.createQrAuditLog({
+      action: 'reveal_password',
+      performedBy: email,
+      targetImei: req.params.imei,
+      details: `Password revealed for IMEI ${req.params.imei}`,
+    });
+    res.json({ password: record.password });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to reveal password" });
+  }
+});
+
+app.post("/api/internal/qr/device", async (req, res) => {
+  try {
+    const email = await verifyQrAccess(req, res);
+    if (!email) return;
+    const { imei, ssid, password, stickerPhotoUrl } = req.body;
+    if (!imei || !ssid || !password) {
+      return res.status(400).json({ error: "IMEI, SSID, and password are required" });
+    }
+    const existing = await storage.getQrDeviceByImei(imei);
+    if (existing) {
+      const updated = await storage.updateQrDeviceRecord(imei, { ssid, password, stickerPhotoUrl, updatedBy: email });
+      await storage.createQrAuditLog({
+        action: 'update_device',
+        performedBy: email,
+        targetImei: imei,
+        details: `Updated device record for IMEI ${imei} (SSID: ${ssid})`,
+      });
+      return res.json({ device: { ...updated, password: '••••••••' }, updated: true });
+    }
+    const record = await storage.createQrDeviceRecord({ imei, ssid, password, stickerPhotoUrl, createdBy: email });
+    await storage.createQrAuditLog({
+      action: 'create_device',
+      performedBy: email,
+      targetImei: imei,
+      details: `Created device record for IMEI ${imei} (SSID: ${ssid})`,
+    });
+    res.json({ device: { ...record, password: '••••••••' }, created: true });
+  } catch (error: any) {
+    if (error.message?.includes('unique') || error.code === '23505') {
+      return res.status(409).json({ error: "Device with this IMEI already exists" });
+    }
+    res.status(500).json({ error: error.message || "Failed to save device" });
+  }
+});
+
+app.post("/api/internal/qr/device/:imei/print", async (req, res) => {
+  try {
+    const email = await verifyQrAccess(req, res);
+    if (!email) return;
+    const updated = await storage.incrementQrPrintCount(req.params.imei);
+    if (!updated) return res.status(404).json({ error: "Device not found" });
+    await storage.createQrAuditLog({
+      action: 'print_label',
+      performedBy: email,
+      targetImei: req.params.imei,
+      details: `Printed label for IMEI ${req.params.imei} (print #${updated.printCount})`,
+    });
+    res.json({ success: true, printCount: updated.printCount });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to record print" });
+  }
+});
+
+app.get("/api/internal/qr/audit-logs", async (req, res) => {
+  try {
+    const email = await verifyQrAccess(req, res);
+    if (!email) return;
+    const logs = await storage.getQrAuditLogs(200);
+    res.json({ logs });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to get audit logs" });
+  }
+});
+
+// Admin QR Access Management
+app.get("/api/admin/qr-access", async (req, res) => {
+  try {
+    const email = verifyAdminToken(req, res);
+    if (!email) return;
+    const grants = await storage.getAllQrAccessGrants();
+    res.json({ grants });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to get QR access grants" });
+  }
+});
+
+app.post("/api/admin/qr-access/grant", async (req, res) => {
+  try {
+    const email = verifyAdminToken(req, res);
+    if (!email) return;
+    const { adminEmail } = req.body;
+    if (!adminEmail) return res.status(400).json({ error: "Admin email is required" });
+    const existing = await storage.getQrAccessGrant(adminEmail.toLowerCase());
+    if (existing) return res.status(409).json({ error: "This user already has QR App access" });
+    const grant = await storage.createQrAccessGrant({
+      adminEmail: adminEmail.toLowerCase(),
+      grantedBy: email,
+    });
+    await storage.createQrAuditLog({
+      action: 'grant_access',
+      performedBy: email,
+      targetEmail: adminEmail.toLowerCase(),
+      details: `Granted QR App access to ${adminEmail}`,
+    });
+    res.json({ grant });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to grant access" });
+  }
+});
+
+app.post("/api/admin/qr-access/revoke", async (req, res) => {
+  try {
+    const email = verifyAdminToken(req, res);
+    if (!email) return;
+    const { adminEmail } = req.body;
+    if (!adminEmail) return res.status(400).json({ error: "Admin email is required" });
+    const revoked = await storage.revokeQrAccessGrant(adminEmail.toLowerCase(), email);
+    if (!revoked) return res.status(404).json({ error: "No active access found for this user" });
+    await storage.createQrAuditLog({
+      action: 'revoke_access',
+      performedBy: email,
+      targetEmail: adminEmail.toLowerCase(),
+      details: `Revoked QR App access from ${adminEmail}`,
+    });
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to revoke access" });
+  }
+});
+
+app.get("/api/admin/qr-audit-logs", async (req, res) => {
+  try {
+    const email = verifyAdminToken(req, res);
+    if (!email) return;
+    const logs = await storage.getQrAuditLogs(500);
+    res.json({ logs });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to get audit logs" });
+  }
+});
+
 app.listen(PORT, "0.0.0.0", async () => {
   console.log(`Server running on port ${PORT}`);
   await seedPortalSettings();

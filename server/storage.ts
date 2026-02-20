@@ -1,6 +1,6 @@
-import { customers, otpCodes, sessions, escalationTickets, customerFeedback, slowSpeedSessions, adminUsers, portalSettings, cancellationRequests, subscriptionPauses, planChangeVerifications, addonLogs, externalApiLogs, billingCreditConfig, billingResolutions, serviceIssueReports, earlyPaymentLogs, type Customer, type InsertCustomer, type OtpCode, type InsertOtpCode, type Session, type InsertSession, type EscalationTicket, type InsertEscalationTicket, type CustomerFeedback, type InsertCustomerFeedback, type SlowSpeedSession, type InsertSlowSpeedSession, type AdminUser, type InsertAdminUser, type PortalSetting, type InsertPortalSetting, type CancellationRequest, type InsertCancellationRequest, type SubscriptionPause, type InsertSubscriptionPause, type PlanChangeVerification, type InsertPlanChangeVerification, type AddonLog, type InsertAddonLog, type ExternalApiLog, type InsertExternalApiLog, type BillingCreditConfig, type InsertBillingCreditConfig, type BillingResolution, type InsertBillingResolution, type ServiceIssueReport, type InsertServiceIssueReport, type EarlyPaymentLog, type InsertEarlyPaymentLog } from "../shared/schema";
+import { customers, otpCodes, sessions, escalationTickets, customerFeedback, slowSpeedSessions, adminUsers, portalSettings, cancellationRequests, subscriptionPauses, planChangeVerifications, addonLogs, externalApiLogs, billingCreditConfig, billingResolutions, serviceIssueReports, earlyPaymentLogs, qrAccessGrants, qrDeviceRecords, qrAuditLogs, type Customer, type InsertCustomer, type OtpCode, type InsertOtpCode, type Session, type InsertSession, type EscalationTicket, type InsertEscalationTicket, type CustomerFeedback, type InsertCustomerFeedback, type SlowSpeedSession, type InsertSlowSpeedSession, type AdminUser, type InsertAdminUser, type PortalSetting, type InsertPortalSetting, type CancellationRequest, type InsertCancellationRequest, type SubscriptionPause, type InsertSubscriptionPause, type PlanChangeVerification, type InsertPlanChangeVerification, type AddonLog, type InsertAddonLog, type ExternalApiLog, type InsertExternalApiLog, type BillingCreditConfig, type InsertBillingCreditConfig, type BillingResolution, type InsertBillingResolution, type ServiceIssueReport, type InsertServiceIssueReport, type EarlyPaymentLog, type InsertEarlyPaymentLog, type QrAccessGrant, type InsertQrAccessGrant, type QrDeviceRecord, type InsertQrDeviceRecord, type QrAuditLog, type InsertQrAuditLog } from "../shared/schema";
 import { db } from "./db";
-import { eq, and, gt, or, desc } from "drizzle-orm";
+import { eq, and, gt, or, desc, ilike } from "drizzle-orm";
 
 export interface IStorage {
   getCustomer(id: number): Promise<Customer | undefined>;
@@ -82,6 +82,21 @@ export interface IStorage {
 
   createEarlyPaymentLog(data: InsertEarlyPaymentLog): Promise<EarlyPaymentLog>;
   getAllEarlyPaymentLogs(): Promise<EarlyPaymentLog[]>;
+
+  createQrAccessGrant(data: InsertQrAccessGrant): Promise<QrAccessGrant>;
+  getQrAccessGrant(adminEmail: string): Promise<QrAccessGrant | undefined>;
+  getAllQrAccessGrants(): Promise<QrAccessGrant[]>;
+  revokeQrAccessGrant(adminEmail: string, revokedBy: string): Promise<QrAccessGrant | undefined>;
+
+  createQrDeviceRecord(data: InsertQrDeviceRecord): Promise<QrDeviceRecord>;
+  getQrDeviceByImei(imei: string): Promise<QrDeviceRecord | undefined>;
+  updateQrDeviceRecord(imei: string, data: Partial<InsertQrDeviceRecord>): Promise<QrDeviceRecord | undefined>;
+  searchQrDeviceRecords(query: string): Promise<QrDeviceRecord[]>;
+  getAllQrDeviceRecords(): Promise<QrDeviceRecord[]>;
+  incrementQrPrintCount(imei: string): Promise<QrDeviceRecord | undefined>;
+
+  createQrAuditLog(data: InsertQrAuditLog): Promise<QrAuditLog>;
+  getQrAuditLogs(limit?: number): Promise<QrAuditLog[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -556,6 +571,80 @@ export class DatabaseStorage implements IStorage {
 
   async getAllEarlyPaymentLogs(): Promise<EarlyPaymentLog[]> {
     return db.select().from(earlyPaymentLogs).orderBy(desc(earlyPaymentLogs.createdAt));
+  }
+
+  async createQrAccessGrant(data: InsertQrAccessGrant): Promise<QrAccessGrant> {
+    const [created] = await db.insert(qrAccessGrants).values(data).returning();
+    return created;
+  }
+
+  async getQrAccessGrant(adminEmail: string): Promise<QrAccessGrant | undefined> {
+    const [grant] = await db.select().from(qrAccessGrants)
+      .where(and(eq(qrAccessGrants.adminEmail, adminEmail.toLowerCase()), eq(qrAccessGrants.isActive, true)));
+    return grant || undefined;
+  }
+
+  async getAllQrAccessGrants(): Promise<QrAccessGrant[]> {
+    return db.select().from(qrAccessGrants).orderBy(desc(qrAccessGrants.grantedAt));
+  }
+
+  async revokeQrAccessGrant(adminEmail: string, revokedBy: string): Promise<QrAccessGrant | undefined> {
+    const [updated] = await db.update(qrAccessGrants)
+      .set({ isActive: false, revokedAt: new Date(), revokedBy })
+      .where(and(eq(qrAccessGrants.adminEmail, adminEmail.toLowerCase()), eq(qrAccessGrants.isActive, true)))
+      .returning();
+    return updated || undefined;
+  }
+
+  async createQrDeviceRecord(data: InsertQrDeviceRecord): Promise<QrDeviceRecord> {
+    const [created] = await db.insert(qrDeviceRecords).values(data).returning();
+    return created;
+  }
+
+  async getQrDeviceByImei(imei: string): Promise<QrDeviceRecord | undefined> {
+    const [record] = await db.select().from(qrDeviceRecords).where(eq(qrDeviceRecords.imei, imei));
+    return record || undefined;
+  }
+
+  async updateQrDeviceRecord(imei: string, data: Partial<InsertQrDeviceRecord>): Promise<QrDeviceRecord | undefined> {
+    const [updated] = await db.update(qrDeviceRecords)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(qrDeviceRecords.imei, imei))
+      .returning();
+    return updated || undefined;
+  }
+
+  async searchQrDeviceRecords(query: string): Promise<QrDeviceRecord[]> {
+    return db.select().from(qrDeviceRecords)
+      .where(or(
+        ilike(qrDeviceRecords.imei, `%${query}%`),
+        ilike(qrDeviceRecords.ssid, `%${query}%`)
+      ))
+      .orderBy(desc(qrDeviceRecords.updatedAt))
+      .limit(50);
+  }
+
+  async getAllQrDeviceRecords(): Promise<QrDeviceRecord[]> {
+    return db.select().from(qrDeviceRecords).orderBy(desc(qrDeviceRecords.createdAt));
+  }
+
+  async incrementQrPrintCount(imei: string): Promise<QrDeviceRecord | undefined> {
+    const existing = await this.getQrDeviceByImei(imei);
+    if (!existing) return undefined;
+    const [updated] = await db.update(qrDeviceRecords)
+      .set({ printCount: (existing.printCount || 0) + 1, lastPrintedAt: new Date(), updatedAt: new Date() })
+      .where(eq(qrDeviceRecords.imei, imei))
+      .returning();
+    return updated || undefined;
+  }
+
+  async createQrAuditLog(data: InsertQrAuditLog): Promise<QrAuditLog> {
+    const [created] = await db.insert(qrAuditLogs).values(data).returning();
+    return created;
+  }
+
+  async getQrAuditLogs(limit: number = 200): Promise<QrAuditLog[]> {
+    return db.select().from(qrAuditLogs).orderBy(desc(qrAuditLogs.createdAt)).limit(limit);
   }
 }
 

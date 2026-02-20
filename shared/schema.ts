@@ -320,6 +320,40 @@ export const earlyPaymentLogs = pgTable("early_payment_logs", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const qrAccessGrants = pgTable("qr_access_grants", {
+  id: serial("id").primaryKey(),
+  adminEmail: varchar("admin_email", { length: 255 }).notNull(),
+  grantedAt: timestamp("granted_at").defaultNow(),
+  grantedBy: varchar("granted_by", { length: 255 }).notNull(),
+  isActive: boolean("is_active").default(true),
+  revokedAt: timestamp("revoked_at"),
+  revokedBy: varchar("revoked_by", { length: 255 }),
+});
+
+export const qrDeviceRecords = pgTable("qr_device_records", {
+  id: serial("id").primaryKey(),
+  imei: varchar("imei", { length: 50 }).notNull().unique(),
+  ssid: varchar("ssid", { length: 255 }).notNull(),
+  password: varchar("password", { length: 255 }).notNull(),
+  stickerPhotoUrl: text("sticker_photo_url"),
+  printCount: integer("print_count").default(0),
+  lastPrintedAt: timestamp("last_printed_at"),
+  createdBy: varchar("created_by", { length: 255 }).notNull(),
+  updatedBy: varchar("updated_by", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const qrAuditLogs = pgTable("qr_audit_logs", {
+  id: serial("id").primaryKey(),
+  action: varchar("action", { length: 50 }).notNull(),
+  performedBy: varchar("performed_by", { length: 255 }).notNull(),
+  targetImei: varchar("target_imei", { length: 50 }),
+  targetEmail: varchar("target_email", { length: 255 }),
+  details: text("details"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const customersRelations = relations(customers, ({ many }) => ({
   otpCodes: many(otpCodes),
   sessions: many(sessions),
@@ -374,6 +408,13 @@ export type ServiceIssueReport = typeof serviceIssueReports.$inferSelect;
 export type InsertServiceIssueReport = typeof serviceIssueReports.$inferInsert;
 export type EarlyPaymentLog = typeof earlyPaymentLogs.$inferSelect;
 export type InsertEarlyPaymentLog = typeof earlyPaymentLogs.$inferInsert;
+
+export type QrAccessGrant = typeof qrAccessGrants.$inferSelect;
+export type InsertQrAccessGrant = typeof qrAccessGrants.$inferInsert;
+export type QrDeviceRecord = typeof qrDeviceRecords.$inferSelect;
+export type InsertQrDeviceRecord = typeof qrDeviceRecords.$inferInsert;
+export type QrAuditLog = typeof qrAuditLogs.$inferSelect;
+export type InsertQrAuditLog = typeof qrAuditLogs.$inferInsert;
 
 export const insertCustomerSchema = createInsertSchema(customers);
 export const insertOtpCodeSchema = createInsertSchema(otpCodes);
