@@ -6354,7 +6354,7 @@ const verifyAdminToken = (req: express.Request, res: express.Response): string |
   }
 };
 
-app.get("/api/internal/qr/check-access", async (req, res) => {
+app.get("/api/ops/qr/check-access", async (req, res) => {
   try {
     const email = await verifyQrAccess(req, res);
     if (!email) return;
@@ -6364,7 +6364,7 @@ app.get("/api/internal/qr/check-access", async (req, res) => {
   }
 });
 
-app.get("/api/internal/qr/devices", async (req, res) => {
+app.get("/api/ops/qr/devices", async (req, res) => {
   try {
     const email = await verifyQrAccess(req, res);
     if (!email) return;
@@ -6382,7 +6382,7 @@ app.get("/api/internal/qr/devices", async (req, res) => {
   }
 });
 
-app.get("/api/internal/qr/device/:imei", async (req, res) => {
+app.get("/api/ops/qr/device/:imei", async (req, res) => {
   try {
     const email = await verifyQrAccess(req, res);
     if (!email) return;
@@ -6395,7 +6395,7 @@ app.get("/api/internal/qr/device/:imei", async (req, res) => {
   }
 });
 
-app.post("/api/internal/qr/device/:imei/reveal", async (req, res) => {
+app.post("/api/ops/qr/device/:imei/reveal", async (req, res) => {
   try {
     const email = await verifyQrAccess(req, res);
     if (!email) return;
@@ -6413,7 +6413,7 @@ app.post("/api/internal/qr/device/:imei/reveal", async (req, res) => {
   }
 });
 
-app.post("/api/internal/qr/device", async (req, res) => {
+app.post("/api/ops/qr/device", async (req, res) => {
   try {
     const email = await verifyQrAccess(req, res);
     if (!email) return;
@@ -6448,7 +6448,7 @@ app.post("/api/internal/qr/device", async (req, res) => {
   }
 });
 
-app.post("/api/internal/qr/device/:imei/print", async (req, res) => {
+app.post("/api/ops/qr/device/:imei/print", async (req, res) => {
   try {
     const email = await verifyQrAccess(req, res);
     if (!email) return;
@@ -6466,7 +6466,7 @@ app.post("/api/internal/qr/device/:imei/print", async (req, res) => {
   }
 });
 
-app.get("/api/internal/qr/audit-logs", async (req, res) => {
+app.get("/api/ops/qr/audit-logs", async (req, res) => {
   try {
     const email = await verifyQrAccess(req, res);
     if (!email) return;

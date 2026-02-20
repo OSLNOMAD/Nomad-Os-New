@@ -2078,7 +2078,7 @@ export default function AdminDashboard() {
                   {qrGranting ? 'Granting...' : 'Grant Access'}
                 </button>
               </div>
-              <p className="text-xs text-gray-500 mt-2">The user must already have an admin account. Access allows them to use the QR App at /internal/nomadQRapp</p>
+              <p className="text-xs text-gray-500 mt-2">The user must already have an admin account. Access allows them to use the QR App at /ops/nomad-qr</p>
             </div>
 
             <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">

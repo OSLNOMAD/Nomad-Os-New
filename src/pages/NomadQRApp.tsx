@@ -41,7 +41,6 @@ export default function NomadQRApp() {
   const [revealing, setRevealing] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const printRef = useRef<HTMLDivElement>(null)
 
   const getToken = () => localStorage.getItem('admin_token')
   const authHeaders = () => ({ 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' })
@@ -57,7 +56,7 @@ export default function NomadQRApp() {
       return
     }
     try {
-      const res = await fetch('/api/internal/qr/check-access', { headers: authHeaders() })
+      const res = await fetch('/api/ops/qr/check-access', { headers: authHeaders() })
       if (res.status === 401) {
         navigate('/admin')
         return
@@ -183,7 +182,7 @@ export default function NomadQRApp() {
     setSaving(true)
     setError('')
     try {
-      const res = await fetch('/api/internal/qr/device', {
+      const res = await fetch('/api/ops/qr/device', {
         method: 'POST',
         headers: authHeaders(),
         body: JSON.stringify({ imei, ssid, password, stickerPhotoUrl: stickerPhoto })
@@ -205,7 +204,7 @@ export default function NomadQRApp() {
     setSearchLoading(true)
     try {
       const q = query !== undefined ? query : searchQuery
-      const url = q.trim() ? `/api/internal/qr/devices?search=${encodeURIComponent(q.trim())}` : '/api/internal/qr/devices'
+      const url = q.trim() ? `/api/ops/qr/devices?search=${encodeURIComponent(q.trim())}` : '/api/ops/qr/devices'
       const res = await fetch(url, { headers: authHeaders() })
       if (res.ok) {
         const data = await res.json()
@@ -228,7 +227,7 @@ export default function NomadQRApp() {
     if (!selectedDevice) return
     setRevealing(true)
     try {
-      const res = await fetch(`/api/internal/qr/device/${selectedDevice.imei}/reveal`, {
+      const res = await fetch(`/api/ops/qr/device/${selectedDevice.imei}/reveal`, {
         method: 'POST',
         headers: authHeaders()
       })
@@ -246,62 +245,12 @@ export default function NomadQRApp() {
   const handlePrint = async () => {
     if (!selectedDevice) return
     try {
-      await fetch(`/api/internal/qr/device/${selectedDevice.imei}/print`, {
+      await fetch(`/api/ops/qr/device/${selectedDevice.imei}/print`, {
         method: 'POST',
         headers: authHeaders()
       })
     } catch {}
-
-    const printWindow = window.open('', '_blank', 'width=600,height=400')
-    if (printWindow) {
-      const pwd = revealedPassword || '(reveal to see)'
-      printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Device Label - ${selectedDevice.imei}</title>
-          <style>
-            @page { size: 4in 6in; margin: 0; }
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { font-family: Arial, Helvetica, sans-serif; width: 4in; height: 6in; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0.3in; }
-            .label { width: 100%; height: 100%; border: 2px solid #000; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 0.25in; }
-            .logo-area { text-align: center; margin-bottom: 0.15in; }
-            .logo-text { font-size: 22px; font-weight: bold; color: #10a37f; letter-spacing: 1px; }
-            .logo-sub { font-size: 10px; color: #666; margin-top: 2px; }
-            .info-block { width: 100%; text-align: center; margin: 0.1in 0; }
-            .info-label { font-size: 11px; font-weight: bold; color: #555; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
-            .info-value { font-size: 20px; font-weight: bold; color: #000; word-break: break-all; padding: 4px 0; }
-            .info-value.small { font-size: 14px; }
-            .divider { width: 80%; border-top: 1px dashed #ccc; margin: 0.08in 0; }
-            .imei-block { font-size: 9px; color: #999; margin-top: 0.1in; }
-          </style>
-        </head>
-        <body>
-          <div class="label">
-            <div class="logo-area">
-              <div class="logo-text">NOMAD INTERNET</div>
-              <div class="logo-sub">WiFi Device Credentials</div>
-            </div>
-            <div class="divider"></div>
-            <div class="info-block">
-              <div class="info-label">Network Name (SSID)</div>
-              <div class="info-value">${selectedDevice.ssid}</div>
-            </div>
-            <div class="divider"></div>
-            <div class="info-block">
-              <div class="info-label">Password</div>
-              <div class="info-value ${pwd.length > 16 ? 'small' : ''}">${pwd}</div>
-            </div>
-            <div class="divider"></div>
-            <div class="imei-block">IMEI: ${selectedDevice.imei}</div>
-          </div>
-        </body>
-        </html>
-      `)
-      printWindow.document.close()
-      printWindow.focus()
-      setTimeout(() => printWindow.print(), 500)
-    }
+    window.open(`/ops/nomad-qr/print/${selectedDevice.imei}`, '_blank')
   }
 
   if (loading) {
@@ -694,7 +643,6 @@ export default function NomadQRApp() {
         )}
       </main>
 
-      <div ref={printRef} className="hidden" />
     </div>
   )
 }

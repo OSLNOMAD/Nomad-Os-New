@@ -10,6 +10,7 @@ import Troubleshoot from './pages/Troubleshoot'
 import AdminLogin from './pages/AdminLogin'
 import AdminDashboard from './pages/AdminDashboard'
 import NomadQRApp from './pages/NomadQRApp'
+import NomadQRPrint from './pages/NomadQRPrint'
 
 function App() {
   return (
@@ -25,7 +26,8 @@ function App() {
       <Route path="/troubleshoot" element={<Troubleshoot />} />
       <Route path="/admin" element={<AdminLogin />} />
       <Route path="/admin/dashboard" element={<AdminDashboard />} />
-      <Route path="/internal/nomadQRapp" element={<NomadQRApp />} />
+      <Route path="/ops/nomad-qr" element={<NomadQRApp />} />
+      <Route path="/ops/nomad-qr/print/:imei" element={<NomadQRPrint />} />
     </Routes>
   )
 }
