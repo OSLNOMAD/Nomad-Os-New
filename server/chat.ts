@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import type { CustomerFullData } from "./services";
+import type { CustomerFullData } from "./services.js";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 

@@ -5,8 +5,8 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { storage } from "./storage";
-import { fetchCustomerFullData, fetchChargebeeCatalogItems, fetchChargebeeItemPrices, removeAddonFromSubscription, getSubscriptionCurrentItems, addTravelAddonToSubscription, addPrimeAddonToSubscription, verifySubscriptionOwnership, setApiLogContext, clearApiLogContext, addPromotionalCredit, addChargebeeCustomerComment, buildZendeskCustomerInfoBlock } from "./services";
+import { storage } from "./storage.js";
+import { fetchCustomerFullData, fetchChargebeeCatalogItems, fetchChargebeeItemPrices, removeAddonFromSubscription, getSubscriptionCurrentItems, addTravelAddonToSubscription, addPrimeAddonToSubscription, verifySubscriptionOwnership, setApiLogContext, clearApiLogContext, addPromotionalCredit, addChargebeeCustomerComment, buildZendeskCustomerInfoBlock } from "./services.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -68,7 +68,7 @@ const PORT = process.env.NODE_ENV === "production" ? 5000 : 3001;
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
   console.error("JWT_SECRET environment variable is required");
-  process.exit(1);
+  throw new Error("JWT_SECRET environment variable is required");
 }
 
 app.use(cors());
@@ -81,26 +81,26 @@ function generateOtp(): string {
 app.post("/api/auth/check-email", async (req, res) => {
   try {
     const { email } = req.body;
-    
+
     if (!email) {
       return res.status(400).json({ error: "Email is required" });
     }
 
-    const { checkChargebeeCustomer } = await import('./services');
+    const { checkChargebeeCustomer } = await import('./services.js');
     const { found: customerFound, customer: chargebeeCustomer } = await checkChargebeeCustomer(email);
 
     let customer = await storage.getCustomerByEmail(email);
     if (!customer) {
-      customer = await storage.createCustomer({ 
+      customer = await storage.createCustomer({
         email,
         chargebeeCustomerId: customerFound && chargebeeCustomer?.id ? chargebeeCustomer.id : null
       });
     }
 
-    res.json({ 
-      customerFound, 
+    res.json({
+      customerFound,
       customerId: customer.id,
-      chargebeeData: customerFound ? chargebeeCustomer : null 
+      chargebeeData: customerFound ? chargebeeCustomer : null
     });
   } catch (error) {
     console.error("Check email error:", error);
@@ -227,8 +227,8 @@ app.post("/api/auth/verify-email-only", async (req, res) => {
     await storage.markOtpVerified(otpRecord.id);
     await storage.updateCustomer(customerId, { emailVerified: true });
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       message: "Email verified"
     });
   } catch (error) {
@@ -255,12 +255,12 @@ app.post("/api/auth/complete-signup", async (req, res) => {
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const customer = await storage.updateCustomer(customerId, { 
+    const customer = await storage.updateCustomer(customerId, {
       passwordHash,
       fullName,
-      isVerified: true 
+      isVerified: true
     });
-    
+
     await storage.updateLastLogin(customerId);
 
     const token = jwt.sign(
@@ -275,8 +275,8 @@ app.post("/api/auth/complete-signup", async (req, res) => {
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     });
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       message: "Account created and logged in",
       token,
       customer: {
@@ -552,16 +552,16 @@ app.post("/api/auth/logout", async (req, res) => {
 app.post("/api/auth/check-existing-user", async (req, res) => {
   try {
     const { email } = req.body;
-    
+
     if (!email) {
       return res.status(400).json({ error: "Email is required" });
     }
 
     const customer = await storage.getCustomerByEmail(email);
-    
+
     if (customer && customer.passwordHash) {
-      return res.json({ 
-        exists: true, 
+      return res.json({
+        exists: true,
         hasPassword: true,
         message: "An account with this email already exists. Please sign in instead."
       });
@@ -659,8 +659,8 @@ app.post("/api/auth/verify-forgot-password-otp", async (req, res) => {
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
     resetTokens.set(resetToken, { email: email.toLowerCase(), expiresAt });
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       customerId: customer.id,
       resetToken,
       message: "OTP verified. You can now reset your password."
@@ -947,7 +947,7 @@ app.post("/api/chat", customerApiLimiter, async (req, res) => {
 
     setApiLogContext({ customerEmail: email, triggeredBy: 'chat' });
     try {
-      const { handleChatMessage } = await import('./chat');
+      const { handleChatMessage } = await import('./chat.js');
       const fullData = await fetchCustomerFullData(email);
       const result = await handleChatMessage(
         fullData,
@@ -983,7 +983,7 @@ app.post("/api/billing/collect-now-url", async (req, res) => {
         isTestToken = true;
         customerEmail = decoded.email;
       }
-    } catch (e) {}
+    } catch (e) { }
 
     if (!isTestToken) {
       const session = await storage.getSessionByToken(token);
@@ -1006,7 +1006,7 @@ app.post("/api/billing/collect-now-url", async (req, res) => {
       return res.status(400).json({ error: "Chargebee customer ID is required" });
     }
 
-    const { createCollectNowHostedPage } = await import('./services');
+    const { createCollectNowHostedPage } = await import('./services.js');
     const result = await createCollectNowHostedPage(
       chargebeeCustomerId,
       redirectUrl || `${req.protocol}://${req.get('host')}/dashboard?payment=success`
@@ -1040,7 +1040,7 @@ app.post("/api/billing/update-payment-method-url", async (req, res) => {
         isTestToken = true;
         customerEmail = decoded.email;
       }
-    } catch (e) {}
+    } catch (e) { }
 
     if (!isTestToken) {
       const session = await storage.getSessionByToken(token);
@@ -1063,7 +1063,7 @@ app.post("/api/billing/update-payment-method-url", async (req, res) => {
       return res.status(400).json({ error: "Chargebee customer ID is required" });
     }
 
-    const { createUpdatePaymentMethodHostedPage } = await import('./services');
+    const { createUpdatePaymentMethodHostedPage } = await import('./services.js');
     const result = await createUpdatePaymentMethodHostedPage(
       chargebeeCustomerId,
       redirectUrl || `${req.protocol}://${req.get('host')}/dashboard?payment_updated=success`
@@ -1103,9 +1103,9 @@ app.post("/api/billing/collect-payment", async (req, res) => {
       return res.status(400).json({ error: "Invoice ID is required" });
     }
 
-    const { fetchChargebeeData, collectPaymentForInvoice } = await import('./services');
+    const { fetchChargebeeData, collectPaymentForInvoice } = await import('./services.js');
     const chargebeeData = await fetchChargebeeData(customer.email);
-    
+
     const allInvoiceIds = chargebeeData.customers.flatMap(c => c.invoices.map(inv => inv.id));
     if (!allInvoiceIds.includes(invoiceId)) {
       return res.status(403).json({ error: "Invoice not found for this customer" });
@@ -1163,7 +1163,7 @@ app.post("/api/billing/pay-early", heavyApiLimiter, async (req, res) => {
       return res.status(400).json({ error: "Number of terms must be between 1 and 12" });
     }
 
-    const { verifySubscriptionOwnership, billFutureRenewals, chargebeeApiPost, checkAdvanceInvoiceForSubscription } = await import('./services');
+    const { verifySubscriptionOwnership, billFutureRenewals, chargebeeApiPost, checkAdvanceInvoiceForSubscription } = await import('./services.js');
     const owns = await verifySubscriptionOwnership(customerEmail, subscriptionId);
     if (!owns) {
       return res.status(403).json({ error: "Subscription not found for this customer" });
@@ -1245,9 +1245,9 @@ app.get("/api/billing/invoice/:invoiceId/pdf", async (req, res) => {
 
     const token = authHeader.split(" ")[1];
     const session = await storage.getSessionByToken(token);
-    
+
     let customerEmail: string | null = null;
-    
+
     if (session) {
       const customer = await storage.getCustomer(session.customerId);
       if (customer) {
@@ -1259,7 +1259,7 @@ app.get("/api/billing/invoice/:invoiceId/pdf", async (req, res) => {
         if (decoded.isTest) {
           customerEmail = decoded.email || "test@example.com";
         }
-      } catch {}
+      } catch { }
     }
 
     if (!customerEmail) {
@@ -1271,9 +1271,9 @@ app.get("/api/billing/invoice/:invoiceId/pdf", async (req, res) => {
       return res.status(400).json({ error: "Invoice ID is required" });
     }
 
-    const { fetchChargebeeData, getInvoicePdfUrl } = await import('./services');
+    const { fetchChargebeeData, getInvoicePdfUrl } = await import('./services.js');
     const chargebeeData = await fetchChargebeeData(customerEmail);
-    
+
     const allInvoiceIds = chargebeeData.customers.flatMap(c => c.invoices.map(inv => inv.id));
     if (!allInvoiceIds.includes(invoiceId)) {
       return res.status(403).json({ error: "Invoice not found for this customer" });
@@ -1301,9 +1301,9 @@ app.get("/api/billing/credit-note/:creditNoteId/pdf", async (req, res) => {
 
     const token = authHeader.split(" ")[1];
     const session = await storage.getSessionByToken(token);
-    
+
     let customerEmail: string | null = null;
-    
+
     if (session) {
       const customer = await storage.getCustomer(session.customerId);
       if (customer) {
@@ -1315,7 +1315,7 @@ app.get("/api/billing/credit-note/:creditNoteId/pdf", async (req, res) => {
         if (decoded.isTest) {
           customerEmail = decoded.email || "test@example.com";
         }
-      } catch {}
+      } catch { }
     }
 
     if (!customerEmail) {
@@ -1327,9 +1327,9 @@ app.get("/api/billing/credit-note/:creditNoteId/pdf", async (req, res) => {
       return res.status(400).json({ error: "Credit Note ID is required" });
     }
 
-    const { fetchChargebeeData, getCreditNotePdfUrl } = await import('./services');
+    const { fetchChargebeeData, getCreditNotePdfUrl } = await import('./services.js');
     const chargebeeData = await fetchChargebeeData(customerEmail);
-    
+
     const allCreditNoteIds = chargebeeData.customers.flatMap(c => c.creditNotes.map(cn => cn.id));
     if (!allCreditNoteIds.includes(creditNoteId)) {
       return res.status(403).json({ error: "Credit note not found for this customer" });
@@ -1365,7 +1365,7 @@ app.post("/api/device/suspend", heavyApiLimiter, async (req, res) => {
         isTestToken = true;
         customerEmail = decoded.email;
       }
-    } catch (e) {}
+    } catch (e) { }
 
     if (!isTestToken) {
       const session = await storage.getSessionByToken(token);
@@ -1388,17 +1388,17 @@ app.post("/api/device/suspend", heavyApiLimiter, async (req, res) => {
       return res.status(400).json({ error: "Device identifier is required" });
     }
 
-    const { suspendDevice } = await import('./services');
+    const { suspendDevice } = await import('./services.js');
     const result = await suspendDevice(identifier, identifierType);
 
     if (!result.success) {
       return res.status(400).json({ error: result.error || "Failed to suspend device" });
     }
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       message: "Device suspend request submitted",
-      requestId: result.requestId 
+      requestId: result.requestId
     });
   } catch (error: any) {
     console.error("Suspend device error:", error);
@@ -1423,7 +1423,7 @@ app.post("/api/device/resume", heavyApiLimiter, async (req, res) => {
         isTestToken = true;
         customerEmail = decoded.email;
       }
-    } catch (e) {}
+    } catch (e) { }
 
     if (!isTestToken) {
       const session = await storage.getSessionByToken(token);
@@ -1446,17 +1446,17 @@ app.post("/api/device/resume", heavyApiLimiter, async (req, res) => {
       return res.status(400).json({ error: "Device identifier is required" });
     }
 
-    const { resumeDevice } = await import('./services');
+    const { resumeDevice } = await import('./services.js');
     const result = await resumeDevice(identifier, identifierType);
 
     if (!result.success) {
       return res.status(400).json({ error: result.error || "Failed to resume device" });
     }
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       message: "Device resume request submitted",
-      requestId: result.requestId 
+      requestId: result.requestId
     });
   } catch (error: any) {
     console.error("Resume device error:", error);
@@ -1481,7 +1481,7 @@ app.post("/api/device/status", customerApiLimiter, async (req, res) => {
         isTestToken = true;
         customerEmail = decoded.email;
       }
-    } catch (e) {}
+    } catch (e) { }
 
     if (!isTestToken) {
       const session = await storage.getSessionByToken(token);
@@ -1506,7 +1506,7 @@ app.post("/api/device/status", customerApiLimiter, async (req, res) => {
 
     setApiLogContext({ customerEmail: customerEmail || undefined, triggeredBy: 'device-status' });
     try {
-      const { getDeviceStatus } = await import('./services');
+      const { getDeviceStatus } = await import('./services.js');
       const device = await getDeviceStatus(identifier, identifierType);
 
       if (!device) {
@@ -1542,7 +1542,7 @@ app.post("/api/device/activate-line", async (req, res) => {
         isTestToken = true;
         customerEmail = decoded.email;
       }
-    } catch (e) {}
+    } catch (e) { }
 
     if (!isTestToken) {
       const session = await storage.getSessionByToken(token);
@@ -1561,10 +1561,10 @@ app.post("/api/device/activate-line", async (req, res) => {
       return res.status(401).json({ error: "Could not determine customer" });
     }
 
-    const { 
-      imei, 
-      iccid, 
-      subscriptionId, 
+    const {
+      imei,
+      iccid,
+      subscriptionId,
       subscriptionStatus,
       chargebeeCustomerId,
       customerFirstName,
@@ -1572,7 +1572,7 @@ app.post("/api/device/activate-line", async (req, res) => {
       inGracePeriod,
       dueInvoicesCount,
       totalDues,
-      notificationEmail 
+      notificationEmail
     } = req.body;
 
     if (!iccid && !imei) {
@@ -1611,8 +1611,8 @@ app.post("/api/device/activate-line", async (req, res) => {
       return res.status(500).json({ error: "Failed to submit activation request" });
     }
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       message: "Line activation request submitted",
       notificationEmail: notificationEmail || customerEmail
     });
@@ -1639,7 +1639,7 @@ app.post("/api/escalation/check", async (req, res) => {
         isTestToken = true;
         customerEmail = decoded.email;
       }
-    } catch (e) {}
+    } catch (e) { }
 
     if (!isTestToken) {
       const session = await storage.getSessionByToken(token);
@@ -1668,7 +1668,7 @@ app.post("/api/escalation/check", async (req, res) => {
     if (existingTicket) {
       const createdAt = new Date(existingTicket.createdAt!);
       const hoursSinceCreation = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60);
-      
+
       res.json({
         hasRecentEscalation: true,
         ticketId: existingTicket.ticketId,
@@ -1706,7 +1706,7 @@ app.post("/api/escalation/create", async (req, res) => {
         isTestToken = true;
         customerEmail = decoded.email;
       }
-    } catch (e) {}
+    } catch (e) { }
 
     if (!isTestToken) {
       const session = await storage.getSessionByToken(token);
@@ -1736,7 +1736,7 @@ app.post("/api/escalation/create", async (req, res) => {
     if (existingTicket) {
       const createdAt = new Date(existingTicket.createdAt!);
       const hoursSinceCreation = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60);
-      
+
       if (hoursSinceCreation < 24) {
         return res.status(400).json({
           error: "An escalation ticket already exists for this issue",
@@ -1788,7 +1788,7 @@ app.post("/api/troubleshooting/submit-ticket", customerApiLimiter, async (req, r
       if (decoded.isTest) {
         customerEmail = decoded.email;
       }
-    } catch (e) {}
+    } catch (e) { }
 
     if (!customerEmail) {
       const session = await storage.getSessionByToken(token);
@@ -2052,7 +2052,7 @@ app.get("/api/feedback", async (req, res) => {
     }
 
     const feedback = await storage.getFeedbackByCustomer(customerEmail);
-    
+
     res.json({ feedback });
   } catch (error: any) {
     console.error("Get feedback error:", error);
@@ -2077,7 +2077,7 @@ app.post("/api/slow-speed/check-eligibility", async (req, res) => {
         isTestToken = true;
         customerEmail = decoded.email;
       }
-    } catch (e) {}
+    } catch (e) { }
 
     if (!isTestToken) {
       const session = await storage.getSessionByToken(token);
@@ -2106,7 +2106,7 @@ app.post("/api/slow-speed/check-eligibility", async (req, res) => {
       const refreshStartedAt = new Date(recentRefresh.refreshStartedAt!);
       const syncExpiresAt = recentRefresh.syncExpiresAt ? new Date(recentRefresh.syncExpiresAt) : null;
       const daysSinceRefresh = (Date.now() - refreshStartedAt.getTime()) / (1000 * 60 * 60 * 24);
-      
+
       const now = Date.now();
       const isSyncing = syncExpiresAt && now < syncExpiresAt.getTime();
       const syncMinutesRemaining = isSyncing ? Math.ceil((syncExpiresAt!.getTime() - now) / (1000 * 60)) : 0;
@@ -2157,7 +2157,7 @@ app.post("/api/slow-speed/start-session", async (req, res) => {
         isTestToken = true;
         customerEmail = decoded.email;
       }
-    } catch (e) {}
+    } catch (e) { }
 
     if (!isTestToken) {
       const session = await storage.getSessionByToken(token);
@@ -2177,7 +2177,7 @@ app.post("/api/slow-speed/start-session", async (req, res) => {
     }
 
     const { subscriptionId, iccid, imei, mdn, issueOnset, modemMoved } = req.body;
-    
+
     if (!subscriptionId) {
       return res.status(400).json({ error: "Subscription ID is required" });
     }
@@ -2221,7 +2221,7 @@ app.post("/api/slow-speed/update-session", async (req, res) => {
       if (decoded.isTest) {
         isTestToken = true;
       }
-    } catch (e) {}
+    } catch (e) { }
 
     if (!isTestToken) {
       const session = await storage.getSessionByToken(token);
@@ -2231,7 +2231,7 @@ app.post("/api/slow-speed/update-session", async (req, res) => {
     }
 
     const { sessionId, ...updateData } = req.body;
-    
+
     if (!sessionId) {
       return res.status(400).json({ error: "Session ID is required" });
     }
@@ -2269,7 +2269,7 @@ app.post("/api/slow-speed/start-refresh", async (req, res) => {
         isTestToken = true;
         customerEmail = decoded.email;
       }
-    } catch (e) {}
+    } catch (e) { }
 
     if (!isTestToken) {
       const session = await storage.getSessionByToken(token);
@@ -2288,7 +2288,7 @@ app.post("/api/slow-speed/start-refresh", async (req, res) => {
     }
 
     const { sessionId, subscriptionId, mdn } = req.body;
-    
+
     if (!sessionId || !subscriptionId) {
       return res.status(400).json({ error: "Session ID and Subscription ID are required" });
     }
@@ -2297,9 +2297,9 @@ app.post("/api/slow-speed/start-refresh", async (req, res) => {
     if (recentRefresh) {
       const refreshStartedAt = new Date(recentRefresh.refreshStartedAt!);
       const daysSinceRefresh = (Date.now() - refreshStartedAt.getTime()) / (1000 * 60 * 60 * 24);
-      
+
       if (daysSinceRefresh < 7) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: "A line refresh was recently performed. Please wait before refreshing again.",
           daysUntilNextRefresh: Math.ceil(7 - daysSinceRefresh)
         });
@@ -2344,7 +2344,7 @@ app.post("/api/slow-speed/complete-refresh", async (req, res) => {
       if (decoded.isTest) {
         isTestToken = true;
       }
-    } catch (e) {}
+    } catch (e) { }
 
     if (!isTestToken) {
       const session = await storage.getSessionByToken(token);
@@ -2354,7 +2354,7 @@ app.post("/api/slow-speed/complete-refresh", async (req, res) => {
     }
 
     const { sessionId, speedsImproved, outdoorTestResult } = req.body;
-    
+
     if (!sessionId) {
       return res.status(400).json({ error: "Session ID is required" });
     }
@@ -2391,7 +2391,7 @@ app.get("/api/slow-speed/session/:sessionId", async (req, res) => {
       if (decoded.isTest) {
         isTestToken = true;
       }
-    } catch (e) {}
+    } catch (e) { }
 
     if (!isTestToken) {
       const session = await storage.getSessionByToken(token);
@@ -2423,7 +2423,7 @@ app.get("/api/device/plans", customerApiLimiter, async (req, res) => {
 
     const session = await storage.getSessionByToken(token);
     let isTest = false;
-    
+
     if (!session) {
       try {
         const decoded = jwt.verify(token, JWT_SECRET) as any;
@@ -2437,7 +2437,7 @@ app.get("/api/device/plans", customerApiLimiter, async (req, res) => {
       }
     }
 
-    const { getAvailablePlans } = await import('./services');
+    const { getAvailablePlans } = await import('./services.js');
     const allPlans = await getAvailablePlans();
 
     if (!allPlans) {
@@ -2455,8 +2455,8 @@ app.get("/api/device/plans", customerApiLimiter, async (req, res) => {
       '64186x48526x54307x90274',
       'Static 5G Bus Internet 100MBPS'
     ];
-    
-    const plans = allPlans.filter((plan: any) => 
+
+    const plans = allPlans.filter((plan: any) =>
       allowedPlanCodes.includes(plan.code) || allowedPlanCodes.includes(plan.name)
     );
 
@@ -2539,7 +2539,7 @@ app.post("/api/admin/feedback/:id/respond", async (req, res) => {
 
     const { id } = req.params;
     const { response } = req.body;
-    
+
     if (!response) {
       return res.status(400).json({ error: "Response is required" });
     }
@@ -2571,7 +2571,7 @@ app.post("/api/subscription/pause/check-eligibility", async (req, res) => {
         isTestToken = true;
         customerEmail = decoded.email;
       }
-    } catch (e) {}
+    } catch (e) { }
     if (!isTestToken) {
       const session = await storage.getSessionByToken(token);
       if (!session) return res.status(401).json({ error: "Invalid or expired session" });
@@ -2584,7 +2584,7 @@ app.post("/api/subscription/pause/check-eligibility", async (req, res) => {
     const { subscriptionId } = req.body;
     if (!subscriptionId) return res.status(400).json({ error: "Subscription ID is required" });
 
-    const { hasTravelAddon: hasTravelAddonFn, checkSubscriptionPaymentStatus } = await import('./services');
+    const { hasTravelAddon: hasTravelAddonFn, checkSubscriptionPaymentStatus } = await import('./services.js');
     const fullData = await fetchCustomerFullData(customerEmail);
 
     let targetSub: any = null;
@@ -2671,7 +2671,7 @@ app.post("/api/subscription/pause/add-travel-addon", async (req, res) => {
         isTestToken = true;
         customerEmail = decoded.email;
       }
-    } catch (e) {}
+    } catch (e) { }
     if (!isTestToken) {
       const session = await storage.getSessionByToken(token);
       if (!session) return res.status(401).json({ error: "Invalid or expired session" });
@@ -2694,7 +2694,7 @@ app.post("/api/subscription/pause/add-travel-addon", async (req, res) => {
     }
     if (!ownsSubscription) return res.status(403).json({ error: "You do not own this subscription" });
 
-    const { addTravelAddonToSubscription } = await import('./services');
+    const { addTravelAddonToSubscription } = await import('./services.js');
     const result = await addTravelAddonToSubscription(subscriptionId);
 
     if (result.success) {
@@ -2723,7 +2723,7 @@ app.post("/api/subscription/pause/check-addon-payment", async (req, res) => {
         isTestToken = true;
         customerEmail = decoded.email;
       }
-    } catch (e) {}
+    } catch (e) { }
     if (!isTestToken) {
       const session = await storage.getSessionByToken(token);
       if (!session) return res.status(401).json({ error: "Invalid or expired session" });
@@ -2749,7 +2749,7 @@ app.post("/api/subscription/pause/check-addon-payment", async (req, res) => {
     }
     if (!targetSub) return res.status(403).json({ error: "You do not own this subscription" });
 
-    const { checkSubscriptionPaymentStatus, hasTravelAddon: hasTravelAddonFn } = await import('./services');
+    const { checkSubscriptionPaymentStatus, hasTravelAddon: hasTravelAddonFn } = await import('./services.js');
     const paymentStatus = await checkSubscriptionPaymentStatus(subscriptionId);
     const hasTravelNow = hasTravelAddonFn(targetSub.subscriptionItems).found;
 
@@ -2781,7 +2781,7 @@ app.post("/api/subscription/pause/execute", async (req, res) => {
         isTestToken = true;
         customerEmail = decoded.email;
       }
-    } catch (e) {}
+    } catch (e) { }
     if (!isTestToken) {
       const session = await storage.getSessionByToken(token);
       if (!session) return res.status(401).json({ error: "Invalid or expired session" });
@@ -2834,7 +2834,7 @@ app.post("/api/subscription/pause/execute", async (req, res) => {
       return res.status(400).json({ error: "Please settle your outstanding balance before pausing" });
     }
 
-    const { hasTravelAddon: hasTravelAddonFn, pauseChargebeeSubscription } = await import('./services');
+    const { hasTravelAddon: hasTravelAddonFn, pauseChargebeeSubscription } = await import('./services.js');
     const travelCheck = hasTravelAddonFn(targetSub.subscriptionItems);
     if (!travelCheck.found) {
       return res.status(400).json({ error: "Travel add-on is required to pause subscription" });
@@ -2909,7 +2909,7 @@ app.get("/api/subscription/pause/history/:subscriptionId", async (req, res) => {
         isTestToken = true;
         customerEmail = decoded.email;
       }
-    } catch (e) {}
+    } catch (e) { }
     if (!isTestToken) {
       const session = await storage.getSessionByToken(token);
       if (!session) return res.status(401).json({ error: "Invalid or expired session" });
@@ -2953,7 +2953,7 @@ app.post("/api/cancellation/start", async (req, res) => {
       if (decoded.isTest) {
         customerEmail = decoded.email;
       }
-    } catch {}
+    } catch { }
 
     if (!customerEmail) {
       const session = await storage.getSessionByToken(token);
@@ -2974,11 +2974,11 @@ app.post("/api/cancellation/start", async (req, res) => {
     }
 
     const customer = await storage.getCustomerByEmail(customerEmail);
-    
+
     const existingRequests = await storage.getCancellationRequestsByCustomer(customerEmail);
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const recentOpenRequest = existingRequests.find(r => 
-      r.subscriptionId === subscriptionId && 
+    const recentOpenRequest = existingRequests.find(r =>
+      r.subscriptionId === subscriptionId &&
       r.createdAt && r.createdAt > twentyFourHoursAgo &&
       r.status !== "retained" && r.flowStep === "completed"
     );
@@ -2992,7 +2992,7 @@ app.post("/api/cancellation/start", async (req, res) => {
         message: "You already have an active cancellation request from the last 24 hours. Our team will reach out to you soon."
       });
     }
-    
+
     const cancellationRequest = await storage.createCancellationRequest({
       customerId: customer?.id,
       customerEmail,
@@ -3026,7 +3026,7 @@ app.post("/api/cancellation/submit-reason", async (req, res) => {
       if (decoded.isTest) {
         customerEmail = decoded.email;
       }
-    } catch {}
+    } catch { }
 
     if (!customerEmail) {
       const session = await storage.getSessionByToken(token);
@@ -3052,15 +3052,15 @@ app.post("/api/cancellation/submit-reason", async (req, res) => {
     }
 
     const hasRecentDiscount = await storage.checkRecentDiscountForSubscription(request.subscriptionId);
-    const isUnpaid = request.subscriptionStatus === "non_renewing" || 
-                     request.subscriptionStatus === "cancelled" ||
-                     request.subscriptionStatus === "paused";
+    const isUnpaid = request.subscriptionStatus === "non_renewing" ||
+      request.subscriptionStatus === "cancelled" ||
+      request.subscriptionStatus === "paused";
     const hasDueInvoices = (request.dueInvoiceCount || 0) > 0;
     const canTroubleshoot = !isUnpaid && !hasDueInvoices;
 
     let nextStep = "retention_offer";
     let discountEligible = !hasRecentDiscount;
-    
+
     if (reason === "too_expensive") {
       nextStep = hasRecentDiscount ? "contact_preference" : "price_negotiation";
     } else if ((reason === "slow_speeds" || reason === "not_reliable") && canTroubleshoot) {
@@ -3098,7 +3098,7 @@ app.post("/api/cancellation/submit-target-price", async (req, res) => {
       if (decoded.isTest) {
         customerEmail = decoded.email;
       }
-    } catch {}
+    } catch { }
 
     if (!customerEmail) {
       const session = await storage.getSessionByToken(token);
@@ -3125,11 +3125,11 @@ app.post("/api/cancellation/submit-target-price", async (req, res) => {
 
     let retentionOffer: { type: string; description: string; discountAmount: number; newPrice: number; duration: string } | null = null;
     const currentPrice = request.currentPrice || 9995;
-    
+
     if (targetPrice && targetPrice > 0) {
       const discount20 = Math.round(currentPrice * 0.8);
       const discount20Amount = Math.round(currentPrice * 0.2);
-      
+
       if (targetPrice <= discount20) {
         retentionOffer = {
           type: "percentage_discount",
@@ -3178,7 +3178,7 @@ app.post("/api/cancellation/respond-to-offer", async (req, res) => {
       if (decoded.isTest) {
         customerEmail = decoded.email;
       }
-    } catch {}
+    } catch { }
 
     if (!customerEmail) {
       const session = await storage.getSessionByToken(token);
@@ -3240,7 +3240,7 @@ app.post("/api/cancellation/troubleshooting-response", async (req, res) => {
       if (decoded.isTest) {
         customerEmail = decoded.email;
       }
-    } catch {}
+    } catch { }
 
     if (!customerEmail) {
       const session = await storage.getSessionByToken(token);
@@ -3297,7 +3297,7 @@ app.post("/api/cancellation/submit-contact", async (req, res) => {
       if (decoded.isTest) {
         customerEmail = decoded.email;
       }
-    } catch {}
+    } catch { }
 
     if (!customerEmail) {
       const session = await storage.getSessionByToken(token);
@@ -3360,11 +3360,11 @@ app.post("/api/cancellation/submit-contact", async (req, res) => {
 
     if (zendeskSubdomain && zendeskEmail && zendeskToken) {
       try {
-        const discountStatus = request.retentionOfferAccepted === true 
+        const discountStatus = request.retentionOfferAccepted === true
           ? "✅ DISCOUNT ACCEPTED - Customer accepted the retention offer and will continue service"
-          : request.retentionOfferAccepted === false 
+          : request.retentionOfferAccepted === false
             ? "❌ DISCOUNT DECLINED - Customer rejected the retention offer"
-            : request.discountEligible === false 
+            : request.discountEligible === false
               ? "⚠️ NOT ELIGIBLE - Customer received a discount within the last 2 months"
               : "N/A - No retention offer presented";
 
@@ -3475,19 +3475,19 @@ ACTION REQUIRED: Please follow up with customer within 24 hours to complete canc
 
     if (slackToken && channelId) {
       try {
-        const discountEmoji = request.retentionOfferAccepted === true 
-          ? ":white_check_mark:" 
-          : request.retentionOfferAccepted === false 
-            ? ":x:" 
+        const discountEmoji = request.retentionOfferAccepted === true
+          ? ":white_check_mark:"
+          : request.retentionOfferAccepted === false
+            ? ":x:"
             : ":grey_question:";
-        const discountStatusShort = request.retentionOfferAccepted === true 
-          ? "Accepted" 
-          : request.retentionOfferAccepted === false 
-            ? "Declined" 
+        const discountStatusShort = request.retentionOfferAccepted === true
+          ? "Accepted"
+          : request.retentionOfferAccepted === false
+            ? "Declined"
             : "N/A";
 
         const reasonDetailsText = request.reasonDetails ? `\n\n*Customer's Comments:*\n>${request.reasonDetails.replace(/\n/g, '\n>')}` : '';
-        
+
         const slackMessage = {
           channel: channelId,
           text: `:rotating_light: *New Cancellation Request* <@U09HLQ6229K> <@U09J3KB0HFB>`,
@@ -3588,7 +3588,7 @@ app.get("/api/cancellation/:requestId", async (req, res) => {
       if (decoded.isTest) {
         customerEmail = decoded.email;
       }
-    } catch {}
+    } catch { }
 
     if (!customerEmail) {
       const session = await storage.getSessionByToken(token);
@@ -3605,7 +3605,7 @@ app.get("/api/cancellation/:requestId", async (req, res) => {
 
     const { requestId } = req.params;
     const request = await storage.getCancellationRequest(parseInt(requestId));
-    
+
     if (!request || request.customerEmail.toLowerCase() !== customerEmail.toLowerCase()) {
       return res.status(404).json({ error: "Cancellation request not found" });
     }
@@ -3632,7 +3632,7 @@ app.get("/api/cancellation/history/:subscriptionId", async (req, res) => {
       if (decoded.isTest) {
         customerEmail = decoded.email;
       }
-    } catch {}
+    } catch { }
 
     if (!customerEmail) {
       const session = await storage.getSessionByToken(token);
@@ -3657,7 +3657,7 @@ app.get("/api/cancellation/history/:subscriptionId", async (req, res) => {
 
     const requestsWithStatus = await Promise.all(subscriptionRequests.map(async (request) => {
       let ticketStatus = null;
-      
+
       if (request.zendeskTicketId && zendeskSubdomain && zendeskEmail && zendeskToken) {
         try {
           const ticketResponse = await fetch(
@@ -3734,7 +3734,7 @@ app.post("/api/admin/settings", async (req, res) => {
 
     const token = authHeader.split(" ")[1];
     let adminEmail: string | undefined;
-    
+
     try {
       const decoded = jwt.verify(token, JWT_SECRET) as any;
       if (!decoded.isAdmin) {
@@ -3830,7 +3830,7 @@ app.get("/api/admin/zendesk/users", async (req, res) => {
 
     const groupId = req.query.group_id as string;
     const authString = Buffer.from(`${zendeskEmail}/token:${zendeskToken}`).toString('base64');
-    
+
     let url = `https://${zendeskSubdomain}.zendesk.com/api/v2/users.json?role=agent&per_page=100`;
     if (groupId) {
       url = `https://${zendeskSubdomain}.zendesk.com/api/v2/groups/${groupId}/users.json?per_page=100`;
@@ -3902,7 +3902,7 @@ app.get("/api/admin/cancellations/export", async (req, res) => {
     }
 
     const cancellations = await storage.getAllCancellationRequests();
-    
+
     // Build CSV
     const headers = [
       "ID",
@@ -3924,14 +3924,14 @@ app.get("/api/admin/cancellations/export", async (req, res) => {
       "Zendesk Ticket ID",
       "Additional Notes"
     ];
-    
+
     // Helper to escape CSV values (handle quotes, newlines, commas)
     const escapeCSV = (val: string | number | null | undefined): string => {
       if (val === null || val === undefined) return "";
       const str = String(val);
       return str.replace(/"/g, '""').replace(/\r?\n/g, ' ');
     };
-    
+
     const rows = cancellations.map(c => [
       c.id,
       c.createdAt ? new Date(c.createdAt).toISOString() : "",
@@ -3952,12 +3952,12 @@ app.get("/api/admin/cancellations/export", async (req, res) => {
       escapeCSV(c.zendeskTicketId),
       escapeCSV(c.additionalNotes)
     ]);
-    
+
     const csvContent = [
       headers.join(","),
       ...rows.map(row => row.map(cell => `"${cell}"`).join(","))
     ].join("\n");
-    
+
     res.setHeader("Content-Type", "text/csv");
     res.setHeader("Content-Disposition", `attachment; filename=cancellation-requests-${new Date().toISOString().split('T')[0]}.csv`);
     res.send(csvContent);
@@ -4060,10 +4060,10 @@ app.post("/api/admin/test-cancellation-slack", async (req, res) => {
     if (!slackToken) {
       return res.status(400).json({ error: "SLACK_BOT_TOKEN not configured" });
     }
-    
+
     const channelId = (await storage.getPortalSetting('slack_channel_id'))?.value || 'C09DACN82VD';
     const zendeskSubdomain = process.env.ZENDESK_SUBDOMAIN || 'nomadinternet';
-    
+
     const testMessage = {
       channel: channelId,
       text: `:rotating_light: *New Cancellation Request* <@U09HLQ6229K> <@U09J3KB0HFB>`,
@@ -4106,7 +4106,7 @@ app.post("/api/admin/test-cancellation-slack", async (req, res) => {
         }
       ]
     };
-    
+
     const slackResponse = await fetch("https://slack.com/api/chat.postMessage", {
       method: "POST",
       headers: {
@@ -4115,13 +4115,13 @@ app.post("/api/admin/test-cancellation-slack", async (req, res) => {
       },
       body: JSON.stringify(testMessage)
     });
-    
+
     const slackResult = await slackResponse.json();
     if (!slackResult.ok) {
       console.error("Slack test message failed:", slackResult);
       return res.status(500).json({ error: slackResult.error || "Failed to send test message" });
     }
-    
+
     res.json({ success: true, message: "Test cancellation message sent to Slack" });
   } catch (error: any) {
     console.error("Test Slack message error:", error);
@@ -4132,14 +4132,14 @@ app.post("/api/admin/test-cancellation-slack", async (req, res) => {
 app.post("/api/admin/seed", async (req, res) => {
   try {
     const { email, password, name, adminSecret } = req.body;
-    
+
     const validSecret = process.env.ADMIN_SEED_SECRET;
     const isProduction = process.env.NODE_ENV === "production";
-    
+
     if (isProduction && (!validSecret || adminSecret !== validSecret)) {
       return res.status(403).json({ error: "Invalid admin secret" });
     }
-    
+
     if (!isProduction && adminSecret !== "dev-seed-only" && adminSecret !== validSecret) {
       return res.status(403).json({ error: "Invalid admin secret" });
     }
@@ -4174,7 +4174,7 @@ app.get("/api/admin/chargebee-catalog", async (req, res) => {
     if (!authHeader) {
       return res.status(401).json({ error: "Unauthorized" });
     }
-    
+
     const token = authHeader.split(" ")[1];
     const decoded = jwt.verify(token, JWT_SECRET) as { adminId: number };
     if (!decoded.adminId) {
@@ -4197,14 +4197,14 @@ app.get("/api/admin/chargebee-catalog", async (req, res) => {
 
     // Generate planNames map format
     const planNamesMap: Record<string, string> = {};
-    
+
     // Add items
     if (itemsResult.items) {
       for (const item of itemsResult.items) {
         planNamesMap[item.id] = item.name;
       }
     }
-    
+
     // Add item prices (these are what subscriptions actually reference)
     if (pricesResult.itemPrices) {
       for (const price of pricesResult.itemPrices) {
@@ -4242,7 +4242,7 @@ app.get("/api/plan-change/options", async (req, res) => {
     const planId = req.query.planId as string;
     if (!planId) return res.status(400).json({ error: "Plan ID is required" });
 
-    const { getPlanChangeOptions } = await import('../shared/planChangeConfig');
+    const { getPlanChangeOptions } = await import('../shared/planChangeConfig.js');
     const options = getPlanChangeOptions(planId);
 
     res.json({ options: options || [] });
@@ -4268,7 +4268,7 @@ app.post("/api/plan-change/execute", async (req, res) => {
         isTestToken = true;
         customerEmail = decoded.email;
       }
-    } catch (e) {}
+    } catch (e) { }
     if (!isTestToken) {
       const session = await storage.getSessionByToken(token);
       if (!session) return res.status(401).json({ error: "Invalid or expired session" });
@@ -4291,8 +4291,8 @@ app.post("/api/plan-change/execute", async (req, res) => {
     if (!subscriptionId) return res.status(400).json({ error: "Subscription ID is required" });
     if (!newPlanId) return res.status(400).json({ error: "New plan ID is required" });
 
-    const { getPlanChangeOptions } = await import('../shared/planChangeConfig');
-    const { fetchCustomerFullData } = await import('./services');
+    const { getPlanChangeOptions } = await import('../shared/planChangeConfig.js');
+    const { fetchCustomerFullData } = await import('./services.js');
 
     const fullData = await fetchCustomerFullData(customerEmail);
     let targetSub: any = null;
@@ -4320,7 +4320,7 @@ app.post("/api/plan-change/execute", async (req, res) => {
 
     const selectedOption = options.find((o: any) => o.planId === newPlanId)!;
 
-    const { changeSubscriptionPlan } = await import('./services');
+    const { changeSubscriptionPlan } = await import('./services.js');
     const result = await changeSubscriptionPlan(subscriptionId, newPlanId);
 
     if (result.success) {
@@ -4362,7 +4362,7 @@ app.post("/api/plan-change/cancel-scheduled", async (req, res) => {
       if (decoded.isTest) {
         customerEmail = decoded.email;
       }
-    } catch (e) {}
+    } catch (e) { }
     if (!customerEmail) {
       const session = await storage.getSessionByToken(token);
       if (!session) return res.status(401).json({ error: "Invalid or expired session" });
@@ -4375,7 +4375,7 @@ app.post("/api/plan-change/cancel-scheduled", async (req, res) => {
     const { subscriptionId } = req.body;
     if (!subscriptionId) return res.status(400).json({ error: "Subscription ID is required" });
 
-    const { fetchCustomerFullData, removeScheduledChanges } = await import('./services');
+    const { fetchCustomerFullData, removeScheduledChanges } = await import('./services.js');
     const fullData = await fetchCustomerFullData(customerEmail);
     let found = false;
     for (const cbCust of fullData.chargebee.customers) {
@@ -5361,12 +5361,14 @@ ACTION REQUIRED: Review billing issue and respond to customer within 24 hours.`;
             text: `Billing Resolution Escalation`,
             blocks: [
               { type: "header", text: { type: "plain_text", text: "Billing Resolution Escalated" } },
-              { type: "section", fields: [
-                { type: "mrkdwn", text: `*Customer:*\n${customerName}` },
-                { type: "mrkdwn", text: `*Email:*\n${customerEmail}` },
-                { type: "mrkdwn", text: `*Issue:*\n${issueLabels[resolution.issueType] || resolution.issueType}` },
-                { type: "mrkdwn", text: `*Zendesk:*\n${zendeskTicketId ? `<https://${zendeskSubdomain}.zendesk.com/agent/tickets/${zendeskTicketId}|#${zendeskTicketId}>` : "Failed"}` },
-              ]},
+              {
+                type: "section", fields: [
+                  { type: "mrkdwn", text: `*Customer:*\n${customerName}` },
+                  { type: "mrkdwn", text: `*Email:*\n${customerEmail}` },
+                  { type: "mrkdwn", text: `*Issue:*\n${issueLabels[resolution.issueType] || resolution.issueType}` },
+                  { type: "mrkdwn", text: `*Zendesk:*\n${zendeskTicketId ? `<https://${zendeskSubdomain}.zendesk.com/agent/tickets/${zendeskTicketId}|#${zendeskTicketId}>` : "Failed"}` },
+                ]
+              },
               ...(resolution.creditOffered && resolution.outcome === "credit_declined" ? [
                 { type: "section", text: { type: "mrkdwn", text: `Credit of $${(resolution.creditOffered / 100).toFixed(2)} was offered but *declined* by customer.` } }
               ] : []),
@@ -6233,7 +6235,7 @@ app.get("/api/subscription/addons/available", customerApiLimiter, async (req, re
       return res.status(400).json({ error: itemsResult.error || "Failed to get subscription items" });
     }
 
-    const { getAvailableAddonsForSubscription } = await import("../shared/addonConfig");
+    const { getAvailableAddonsForSubscription } = await import("../shared/addonConfig.js");
     const { available, alreadyActive } = getAvailableAddonsForSubscription(itemsResult.items);
 
     const currentAddons = itemsResult.items
@@ -6269,7 +6271,7 @@ app.post("/api/subscription/addons/add", heavyApiLimiter, async (req, res) => {
       return res.status(403).json({ error: ownership.error || "Access denied" });
     }
 
-    const { getAddonByFamily } = await import("../shared/addonConfig");
+    const { getAddonByFamily } = await import("../shared/addonConfig.js");
     const addonDef = getAddonByFamily(addonFamily);
     if (!addonDef) {
       return res.status(400).json({ error: "Invalid add-on" });
@@ -6280,7 +6282,7 @@ app.post("/api/subscription/addons/add", heavyApiLimiter, async (req, res) => {
       return res.status(400).json({ error: "Failed to verify subscription" });
     }
 
-    const { getAvailableAddonsForSubscription } = await import("../shared/addonConfig");
+    const { getAvailableAddonsForSubscription } = await import("../shared/addonConfig.js");
     const { available } = getAvailableAddonsForSubscription(itemsResult.items);
     const isAvailable = available.some(a => a.family === addonFamily);
     if (!isAvailable) {
@@ -6344,7 +6346,7 @@ app.post("/api/subscription/addons/remove", heavyApiLimiter, async (req, res) =>
       return res.status(403).json({ error: ownership.error || "Access denied" });
     }
 
-    const { getAddonByFamily } = await import("../shared/addonConfig");
+    const { getAddonByFamily } = await import("../shared/addonConfig.js");
     const addonDef = getAddonByFamily(addonFamily);
     if (!addonDef) {
       return res.status(400).json({ error: "Invalid add-on" });
@@ -6619,7 +6621,10 @@ app.get("/api/admin/qr-audit-logs", async (req, res) => {
   }
 });
 
-app.listen(PORT, "0.0.0.0", async () => {
-  console.log(`Server running on port ${PORT}`);
-  await seedPortalSettings();
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, "0.0.0.0", async () => {
+    console.log(`Server running on port ${PORT}`);
+    await seedPortalSettings();
+  });
+}
+export default app;

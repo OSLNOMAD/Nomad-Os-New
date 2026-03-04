@@ -1,4 +1,4 @@
-import { storage } from './storage';
+import { storage } from './storage.js';
 
 const CHARGEBEE_API_KEY = process.env.CHARGEBEE_API_KEY;
 const CHARGEBEE_SITE = process.env.CHARGEBEE_SITE;
@@ -546,7 +546,7 @@ export interface CustomerFullData {
 
 async function chargebeeApiGet(endpoint: string): Promise<any> {
   if (!CHARGEBEE_API_KEY || !CHARGEBEE_SITE) return null;
-  
+
   const credentials = Buffer.from(`${CHARGEBEE_API_KEY}:`).toString('base64');
   const response = await loggedFetch(`https://${CHARGEBEE_SITE}.chargebee.com/api/v2${endpoint}`, {
     method: 'GET',
@@ -555,7 +555,7 @@ async function chargebeeApiGet(endpoint: string): Promise<any> {
       'Content-Type': 'application/json',
     }
   });
-  
+
   if (!response.ok) return null;
   return response.json();
 }
@@ -748,17 +748,17 @@ export async function fetchChargebeeData(email: string): Promise<ChargebeeData> 
     totalInvoices: 0,
     totalDue: 0
   };
-  
+
   try {
     const customerData = await chargebeeApiGet(`/customers?email[is]=${encodeURIComponent(email)}&limit=100`);
     if (!customerData?.list?.length) return result;
-    
+
     const customersWithData: ChargebeeCustomerWithData[] = [];
-    
+
     for (const item of customerData.list) {
       const c = item.customer;
       const customer = parseChargebeeCustomer(c);
-      
+
       const [subsData, invoicesData, txnData, creditNotesData, paymentSourcesData] = await Promise.all([
         chargebeeApiGet(`/subscriptions?customer_id[is]=${c.id}&limit=50`),
         chargebeeApiGet(`/invoices?customer_id[is]=${c.id}&limit=50&sort_by[desc]=date`),
@@ -766,7 +766,7 @@ export async function fetchChargebeeData(email: string): Promise<ChargebeeData> 
         chargebeeApiGet(`/credit_notes?customer_id[is]=${c.id}&limit=50&sort_by[desc]=date`),
         chargebeeApiGet(`/payment_sources?customer_id[is]=${c.id}`)
       ]);
-      
+
       let subscriptions = subsData?.list?.map((i: any) => parseChargebeeSubscription(i.subscription)) || [];
       const invoices = invoicesData?.list?.map((i: any) => parseChargebeeInvoice(i.invoice)) || [];
       const transactions = txnData?.list?.map((i: any) => parseChargebeeTransaction(i.transaction)) || [];
@@ -800,7 +800,7 @@ export async function fetchChargebeeData(email: string): Promise<ChargebeeData> 
           }
         }
       }
-      
+
       const customerWithData: ChargebeeCustomerWithData = {
         ...customer,
         subscriptions,
@@ -809,27 +809,27 @@ export async function fetchChargebeeData(email: string): Promise<ChargebeeData> 
         creditNotes,
         paymentSources
       };
-      
+
       customersWithData.push(customerWithData);
-      
+
       result.totalSubscriptions += subscriptions.length;
       result.totalInvoices += invoices.length;
       result.totalDue += invoices.reduce((sum, inv) => sum + inv.amountDue, 0);
     }
-    
+
     customersWithData.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     result.customers = customersWithData;
-    
+
   } catch (error) {
     console.error('Chargebee fetch error:', error);
   }
-  
+
   return result;
 }
 
 export async function fetchShopifyOrders(email: string): Promise<ShopifyOrder[]> {
   if (!SHOPIFY_ADMIN_KEY) return [];
-  
+
   try {
     const response = await loggedFetch(
       `https://nomadinternet.myshopify.com/admin/api/2024-01/orders.json?status=any&email=${encodeURIComponent(email)}&limit=250`,
@@ -841,12 +841,12 @@ export async function fetchShopifyOrders(email: string): Promise<ShopifyOrder[]>
         }
       }
     );
-    
+
     if (!response.ok) return [];
-    
+
     const data = await response.json() as any;
     const orders = data.orders || [];
-    
+
     return orders.map((o: any) => ({
       orderNumber: o.name,
       orderId: String(o.id),
@@ -931,13 +931,13 @@ export async function fetchShopifyOrders(email: string): Promise<ShopifyOrder[]>
 
 export async function fetchShipstationOrdersByNumbers(orderNumbers: string[]): Promise<ShipstationOrder[]> {
   if (!SHIPSTATION_API_KEY || !SHIPSTATION_API_SECRET || orderNumbers.length === 0) return [];
-  
+
   try {
     const credentials = Buffer.from(`${SHIPSTATION_API_KEY}:${SHIPSTATION_API_SECRET}`).toString('base64');
     let allOrders: any[] = [];
-    
+
     const limitedOrderNumbers = orderNumbers.slice(0, 20);
-    
+
     const fetchOrder = async (orderNumber: string) => {
       const cleanOrderNumber = orderNumber.replace('#', '');
       try {
@@ -962,12 +962,12 @@ export async function fetchShipstationOrdersByNumbers(orderNumbers: string[]): P
         return [];
       }
     };
-    
+
     const results = await Promise.all(limitedOrderNumbers.map(fetchOrder));
     allOrders = results.flat();
-    
+
     const customerOrders = allOrders;
-    
+
     return customerOrders.map((o: any) => ({
       orderNumber: o.orderNumber,
       orderId: o.orderId,
@@ -1084,17 +1084,17 @@ export async function fetchShipstationOrdersByNumbers(orderNumbers: string[]): P
 export function combineOrders(shopifyOrders: ShopifyOrder[], shipstationOrders: ShipstationOrder[]): CombinedOrder[] {
   const combined: CombinedOrder[] = [];
   const processedShipstation = new Set<string>();
-  
+
   for (const so of shopifyOrders) {
     const orderNum = so.orderNumber.replace('#', '');
     const matchingSS = shipstationOrders.find(ss => ss.orderNumber === orderNum || ss.orderNumber === so.orderNumber);
-    
+
     if (matchingSS) {
       processedShipstation.add(String(matchingSS.orderId));
     }
-    
+
     const tracking: CombinedOrder['tracking'] = [];
-    
+
     for (const f of so.fulfillments) {
       if (f.trackingNumber) {
         tracking.push({
@@ -1106,7 +1106,7 @@ export function combineOrders(shopifyOrders: ShopifyOrder[], shipstationOrders: 
         });
       }
     }
-    
+
     if (matchingSS?.shipments) {
       for (const s of matchingSS.shipments) {
         if (s.trackingNumber && !tracking.find(t => t.trackingNumber === s.trackingNumber)) {
@@ -1120,7 +1120,7 @@ export function combineOrders(shopifyOrders: ShopifyOrder[], shipstationOrders: 
         }
       }
     }
-    
+
     combined.push({
       source: matchingSS ? 'both' : 'shopify',
       orderNumber: so.orderNumber,
@@ -1156,9 +1156,9 @@ export function combineOrders(shopifyOrders: ShopifyOrder[], shipstationOrders: 
       shipstationData: matchingSS
     });
   }
-  
+
   combined.sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime());
-  
+
   return combined;
 }
 
@@ -1166,10 +1166,10 @@ async function getThingspaceTokens(): Promise<{ oauth: string; session: string }
   if (!THINGSPACE_CLIENT_ID || !THINGSPACE_CLIENT_SECRET || !THINGSPACE_USERNAME || !THINGSPACE_PASSWORD) {
     return null;
   }
-  
+
   try {
     const credentials = Buffer.from(`${THINGSPACE_CLIENT_ID}:${THINGSPACE_CLIENT_SECRET}`).toString('base64');
-    
+
     const oauthResponse = await loggedFetch('https://thingspace.verizon.com/api/ts/v1/oauth2/token', {
       method: 'POST',
       headers: {
@@ -1178,12 +1178,12 @@ async function getThingspaceTokens(): Promise<{ oauth: string; session: string }
       },
       body: 'grant_type=client_credentials'
     });
-    
+
     if (!oauthResponse.ok) return null;
-    
+
     const oauthData = await oauthResponse.json() as any;
     const oauthToken = oauthData.access_token;
-    
+
     const sessionResponse = await loggedFetch('https://thingspace.verizon.com/api/m2m/v1/session/login', {
       method: 'POST',
       headers: {
@@ -1195,11 +1195,11 @@ async function getThingspaceTokens(): Promise<{ oauth: string; session: string }
         password: THINGSPACE_PASSWORD
       })
     });
-    
+
     if (!sessionResponse.ok) return null;
-    
+
     const sessionData = await sessionResponse.json() as any;
-    
+
     return { oauth: oauthToken, session: sessionData.sessionToken };
   } catch (error) {
     console.error('ThingSpace auth error:', error);
@@ -1209,10 +1209,10 @@ async function getThingspaceTokens(): Promise<{ oauth: string; session: string }
 
 export async function fetchThingspaceDevice(iccid: string): Promise<ThingspaceDevice | null> {
   if (!THINGSPACE_ACCOUNT_NAME) return null;
-  
+
   const tokens = await getThingspaceTokens();
   if (!tokens) return null;
-  
+
   try {
     const response = await loggedFetch('https://thingspace.verizon.com/api/m2m/v1/devices/actions/list', {
       method: 'POST',
@@ -1230,31 +1230,31 @@ export async function fetchThingspaceDevice(iccid: string): Promise<ThingspaceDe
         }
       })
     });
-    
+
     if (!response.ok) {
       console.error('ThingSpace API error:', response.status);
       return null;
     }
-    
+
     const data = await response.json() as any;
     const devices = data.devices || [];
-    
+
     if (!devices.length) return null;
-    
+
     const device = devices[0];
-    
+
     const getDeviceId = (kind: string) => {
-      const found = device.deviceIds?.find((id: any) => 
+      const found = device.deviceIds?.find((id: any) =>
         id.kind.toLowerCase() === kind.toLowerCase()
       );
       return found?.id || null;
     };
-    
+
     const extendedAttrs: Record<string, string> = {};
     for (const attr of device.extendedAttributes || []) {
       extendedAttrs[attr.key] = attr.value;
     }
-    
+
     return {
       accountName: device.accountName,
       state: device.state || 'unknown',
@@ -1409,15 +1409,15 @@ export async function fetchCustomerFullData(email: string): Promise<CustomerFull
     fetchChargebeeData(email),
     fetchShopifyOrders(email)
   ]);
-  
+
   const orderNumbers = shopifyOrders.map(o => o.orderNumber);
   const shipstationOrders = await fetchShipstationOrdersByNumbers(orderNumbers);
-  
+
   const orders = combineOrders(shopifyOrders, shipstationOrders);
-  
+
   const devices: ThingspaceDevice[] = [];
   const iccidsToCheck = new Set<string>();
-  
+
   for (const customer of chargebee.customers) {
     for (const sub of customer.subscriptions) {
       if (sub.iccid && sub.iccid !== 'pending' && sub.iccid !== 'redemption_pending') {
@@ -1425,7 +1425,7 @@ export async function fetchCustomerFullData(email: string): Promise<CustomerFull
       }
     }
   }
-  
+
   const deviceResults = await Promise.all(
     [...iccidsToCheck].map(async (iccid) => {
       try {
@@ -1436,7 +1436,7 @@ export async function fetchCustomerFullData(email: string): Promise<CustomerFull
     })
   );
   devices.push(...deviceResults.filter((d): d is ThingspaceDevice => d !== null));
-  
+
   return {
     chargebee,
     orders,
@@ -1446,13 +1446,13 @@ export async function fetchCustomerFullData(email: string): Promise<CustomerFull
 
 export async function chargebeeApiPost(endpoint: string, data: Record<string, string>): Promise<any> {
   if (!CHARGEBEE_API_KEY || !CHARGEBEE_SITE) return null;
-  
+
   const credentials = Buffer.from(`${CHARGEBEE_API_KEY}:`).toString('base64');
   const formData = new URLSearchParams();
   for (const [key, value] of Object.entries(data)) {
     formData.append(key, value);
   }
-  
+
   const response = await loggedFetch(`https://${CHARGEBEE_SITE}.chargebee.com/api/v2${endpoint}`, {
     method: 'POST',
     headers: {
@@ -1461,7 +1461,7 @@ export async function chargebeeApiPost(endpoint: string, data: Record<string, st
     },
     body: formData.toString()
   });
-  
+
   if (!response.ok) {
     const errorText = await response.text();
     console.error('Chargebee API error:', errorText);
@@ -1469,7 +1469,7 @@ export async function chargebeeApiPost(endpoint: string, data: Record<string, st
     try {
       const errorJson = JSON.parse(errorText);
       errorMessage = errorJson.message || errorJson.error_msg || errorMessage;
-    } catch {}
+    } catch { }
     throw new Error(errorMessage);
   }
   return response.json();
@@ -1481,7 +1481,7 @@ export async function createCollectNowHostedPage(customerId: string, redirectUrl
       'customer[id]': customerId,
       'redirect_url': redirectUrl
     });
-    
+
     if (result?.hosted_page?.url) {
       return { url: result.hosted_page.url };
     }
@@ -1498,7 +1498,7 @@ export async function createUpdatePaymentMethodHostedPage(customerId: string, re
       'customer[id]': customerId,
       'redirect_url': redirectUrl
     });
-    
+
     if (result?.hosted_page?.url) {
       return { url: result.hosted_page.url };
     }
@@ -1512,7 +1512,7 @@ export async function createUpdatePaymentMethodHostedPage(customerId: string, re
 export async function collectPaymentForInvoice(invoiceId: string): Promise<{ success: boolean; error?: string }> {
   try {
     const result = await chargebeeApiPost(`/invoices/${invoiceId}/collect_payment`, {});
-    
+
     if (result?.invoice) {
       return { success: true };
     }
@@ -1570,9 +1570,9 @@ export async function checkAdvanceInvoiceForSubscription(subscriptionId: string)
 export async function getInvoicePdfUrl(invoiceId: string): Promise<{ url: string; validTill: string } | null> {
   try {
     const result = await chargebeeApiPost(`/invoices/${invoiceId}/pdf`, {});
-    
+
     if (result?.download?.download_url) {
-      return { 
+      return {
         url: result.download.download_url,
         validTill: result.download.valid_till ? new Date(result.download.valid_till * 1000).toISOString() : ''
       };
@@ -1587,9 +1587,9 @@ export async function getInvoicePdfUrl(invoiceId: string): Promise<{ url: string
 export async function getCreditNotePdfUrl(creditNoteId: string): Promise<{ url: string; validTill: string } | null> {
   try {
     const result = await chargebeeApiPost(`/credit_notes/${creditNoteId}/pdf`, {});
-    
+
     if (result?.download?.download_url) {
-      return { 
+      return {
         url: result.download.download_url,
         validTill: result.download.valid_till ? new Date(result.download.valid_till * 1000).toISOString() : ''
       };
@@ -1706,7 +1706,7 @@ export async function removeAddonFromSubscription(subscriptionId: string, addonI
     const addonExists = currentItems.some((item: any) => item.item_price_id === addonItemPriceId && item.item_type === 'addon');
 
     if (!addonExists) {
-      const { isAddonInFamily, AVAILABLE_ADDONS } = await import('../shared/addonConfig');
+      const { isAddonInFamily, AVAILABLE_ADDONS } = await import('../shared/addonConfig.js');
       const addonDef = AVAILABLE_ADDONS.find(a => a.itemPriceId === addonItemPriceId);
       const family = addonDef?.family;
 
@@ -1963,12 +1963,12 @@ export async function suspendDevice(identifier: string, identifierType: 'iccid' 
   if (!THINGSPACE_ACCOUNT_NAME) {
     return { success: false, error: 'ThingSpace account not configured' };
   }
-  
+
   const tokens = await getThingspaceTokens();
   if (!tokens) {
     return { success: false, error: 'Failed to authenticate with ThingSpace' };
   }
-  
+
   try {
     const response = await loggedFetch('https://thingspace.verizon.com/api/m2m/v1/devices/actions/suspend', {
       method: 'POST',
@@ -1991,17 +1991,17 @@ export async function suspendDevice(identifier: string, identifierType: 'iccid' 
         ]
       })
     });
-    
+
     const responseText = await response.text();
     console.log('ThingSpace suspend response:', response.status, responseText);
-    
+
     if (!response.ok) {
       return { success: false, error: `ThingSpace API error: ${response.status}` };
     }
-    
+
     const data = JSON.parse(responseText);
-    return { 
-      success: true, 
+    return {
+      success: true,
       requestId: data.requestId,
       deviceState: 'suspend_pending'
     };
@@ -2015,12 +2015,12 @@ export async function resumeDevice(identifier: string, identifierType: 'iccid' |
   if (!THINGSPACE_ACCOUNT_NAME) {
     return { success: false, error: 'ThingSpace account not configured' };
   }
-  
+
   const tokens = await getThingspaceTokens();
   if (!tokens) {
     return { success: false, error: 'Failed to authenticate with ThingSpace' };
   }
-  
+
   try {
     const response = await loggedFetch('https://thingspace.verizon.com/api/m2m/v1/devices/actions/restore', {
       method: 'POST',
@@ -2043,17 +2043,17 @@ export async function resumeDevice(identifier: string, identifierType: 'iccid' |
         ]
       })
     });
-    
+
     const responseText = await response.text();
     console.log('ThingSpace restore response:', response.status, responseText);
-    
+
     if (!response.ok) {
       return { success: false, error: `ThingSpace API error: ${response.status}` };
     }
-    
+
     const data = JSON.parse(responseText);
-    return { 
-      success: true, 
+    return {
+      success: true,
       requestId: data.requestId,
       deviceState: 'restore_pending'
     };
@@ -2065,10 +2065,10 @@ export async function resumeDevice(identifier: string, identifierType: 'iccid' |
 
 export async function getDeviceStatus(identifier: string, identifierType: 'iccid' | 'imei' | 'mdn' = 'iccid'): Promise<ThingspaceDevice | null> {
   if (!THINGSPACE_ACCOUNT_NAME) return null;
-  
+
   const tokens = await getThingspaceTokens();
   if (!tokens) return null;
-  
+
   try {
     const response = await loggedFetch('https://thingspace.verizon.com/api/m2m/v1/devices/actions/list', {
       method: 'POST',
@@ -2086,28 +2086,28 @@ export async function getDeviceStatus(identifier: string, identifierType: 'iccid
         }
       })
     });
-    
+
     if (!response.ok) return null;
-    
+
     const data = await response.json() as any;
     const devices = data.devices || [];
-    
+
     if (!devices.length) return null;
-    
+
     const device = devices[0];
-    
+
     const getDeviceId = (kind: string) => {
-      const found = device.deviceIds?.find((id: any) => 
+      const found = device.deviceIds?.find((id: any) =>
         id.kind.toLowerCase() === kind.toLowerCase()
       );
       return found?.id || null;
     };
-    
+
     const extendedAttrs: Record<string, string> = {};
     for (const attr of device.extendedAttributes || []) {
       extendedAttrs[attr.key] = attr.value;
     }
-    
+
     return {
       accountName: device.accountName,
       state: device.state || 'unknown',
@@ -2146,10 +2146,10 @@ export interface ServicePlan {
 
 export async function getAvailablePlans(): Promise<ServicePlan[] | null> {
   if (!THINGSPACE_ACCOUNT_NAME) return null;
-  
+
   const tokens = await getThingspaceTokens();
   if (!tokens) return null;
-  
+
   try {
     const response = await loggedFetch(`https://thingspace.verizon.com/api/m2m/v1/plans/${THINGSPACE_ACCOUNT_NAME}`, {
       method: 'GET',
@@ -2159,12 +2159,12 @@ export async function getAvailablePlans(): Promise<ServicePlan[] | null> {
         'Content-Type': 'application/json',
       }
     });
-    
+
     if (!response.ok) {
       console.error('ThingSpace get plans error:', response.status);
       return null;
     }
-    
+
     const data = await response.json() as any;
     return data || [];
   } catch (error) {
@@ -2199,10 +2199,10 @@ export async function fetchChargebeeCatalogItems(): Promise<{
       status: string;
       description?: string;
     }> = [];
-    
+
     let offset: string | undefined;
     let hasMore = true;
-    
+
     // Fetch all items including archived (status[in] includes active and archived)
     while (hasMore) {
       const params = new URLSearchParams();
@@ -2211,7 +2211,7 @@ export async function fetchChargebeeCatalogItems(): Promise<{
       if (offset) {
         params.append('offset', offset);
       }
-      
+
       const response = await loggedFetch(
         `https://${CHARGEBEE_SITE}.chargebee.com/api/v2/items?${params.toString()}`,
         {
@@ -2222,15 +2222,15 @@ export async function fetchChargebeeCatalogItems(): Promise<{
           }
         }
       );
-      
+
       if (!response.ok) {
         const errorText = await response.text();
         console.error('Chargebee items API error:', errorText);
         return { success: false, error: `Failed to fetch items: ${response.status}` };
       }
-      
+
       const data = await response.json();
-      
+
       if (data.list && Array.isArray(data.list)) {
         for (const entry of data.list) {
           if (entry.item) {
@@ -2244,14 +2244,14 @@ export async function fetchChargebeeCatalogItems(): Promise<{
           }
         }
       }
-      
+
       if (data.next_offset) {
         offset = data.next_offset;
       } else {
         hasMore = false;
       }
     }
-    
+
     console.log(`Fetched ${allItems.length} items from Chargebee catalog`);
     return { success: true, items: allItems };
   } catch (error: any) {
@@ -2293,10 +2293,10 @@ export async function fetchChargebeeItemPrices(): Promise<{
       period?: number;
       periodUnit?: string;
     }> = [];
-    
+
     let offset: string | undefined;
     let hasMore = true;
-    
+
     while (hasMore) {
       const params = new URLSearchParams();
       params.append('limit', '100');
@@ -2304,7 +2304,7 @@ export async function fetchChargebeeItemPrices(): Promise<{
       if (offset) {
         params.append('offset', offset);
       }
-      
+
       const response = await loggedFetch(
         `https://${CHARGEBEE_SITE}.chargebee.com/api/v2/item_prices?${params.toString()}`,
         {
@@ -2315,15 +2315,15 @@ export async function fetchChargebeeItemPrices(): Promise<{
           }
         }
       );
-      
+
       if (!response.ok) {
         const errorText = await response.text();
         console.error('Chargebee item_prices API error:', errorText);
         return { success: false, error: `Failed to fetch item prices: ${response.status}` };
       }
-      
+
       const data = await response.json();
-      
+
       if (data.list && Array.isArray(data.list)) {
         for (const entry of data.list) {
           if (entry.item_price) {
@@ -2342,14 +2342,14 @@ export async function fetchChargebeeItemPrices(): Promise<{
           }
         }
       }
-      
+
       if (data.next_offset) {
         offset = data.next_offset;
       } else {
         hasMore = false;
       }
     }
-    
+
     console.log(`Fetched ${allItemPrices.length} item prices from Chargebee catalog`);
     return { success: true, itemPrices: allItemPrices };
   } catch (error: any) {
