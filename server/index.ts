@@ -5399,6 +5399,81 @@ ACTION REQUIRED: Review billing issue and respond to customer within 24 hours.`;
   }
 });
 
+app.post("/api/billing-resolution/submit-refund", heavyApiLimiter, async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (!token) return res.status(401).json({ error: "Not authenticated" });
+
+    const session = await storage.getSessionByToken(token);
+    let customerEmail = "";
+    let customerName = "";
+    if (session) {
+      const customer = await storage.getCustomer(session.customerId);
+      customerEmail = customer?.email || "";
+      customerName = customer?.fullName || "";
+    } else {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET) as any;
+        customerEmail = decoded.email || "";
+        customerName = decoded.fullName || "";
+      } catch {
+        return res.status(401).json({ error: "Invalid token" });
+      }
+    }
+
+    if (!customerEmail) return res.status(401).json({ error: "Could not identify customer" });
+
+    const {
+      subscriptionId, planName, planAmount, subscriptionStatus,
+      reason, reasonCode, description, requestedAmount, requestedAmountDisplay,
+      refundMethod, refundMethodLabel, outageStartDate, outageEndDate,
+      preferredContact, contactPhone, customerPhone
+    } = req.body;
+
+    if (!subscriptionId || !reason || !description?.trim() || !requestedAmount || requestedAmount <= 0) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const payload = {
+      customerEmail,
+      customerName,
+      customerPhone: customerPhone || "",
+      subscriptionId,
+      planName: planName || "",
+      planAmount: planAmount || 0,
+      subscriptionStatus: subscriptionStatus || "",
+      reason,
+      reasonCode: reasonCode || "",
+      description: description.trim(),
+      requestedAmount,
+      requestedAmountDisplay: requestedAmountDisplay || "",
+      refundMethod: refundMethod || "original_payment",
+      refundMethodLabel: refundMethodLabel || "",
+      outageStartDate: outageStartDate || null,
+      outageEndDate: outageEndDate || null,
+      preferredContact: preferredContact || "email",
+      contactPhone: contactPhone || null,
+      submittedAt: new Date().toISOString(),
+    };
+
+    const webhookRes = await fetch("https://app.lrlos.com/webhook/Nomados/submitrefund", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (webhookRes.ok || webhookRes.status === 200 || webhookRes.status === 201 || webhookRes.status === 202) {
+      res.json({ success: true, message: "Refund request submitted successfully" });
+    } else {
+      console.error("Refund webhook failed:", webhookRes.status, await webhookRes.text().catch(() => ""));
+      res.status(502).json({ error: "Failed to submit refund request. Please try again." });
+    }
+  } catch (error: any) {
+    console.error("Submit refund error:", error);
+    res.status(500).json({ error: "An error occurred while submitting your request" });
+  }
+});
+
 app.get("/api/billing-resolution/history", async (req, res) => {
   try {
     const token = req.headers.authorization?.replace("Bearer ", "");

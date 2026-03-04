@@ -30,7 +30,7 @@ The design adheres to Nomad Internet's official branding with a modern SaaS aest
 ### Feature Specifications
 - **Sign-Up & Sign-In Flows**: Comprehensive flows including email and phone OTP verification, secure password handling, and passwordless options.
 - **Account Management**: Functionality for users to update personal information (name, password, phone number).
-- **Dashboard**: A centralized view with dedicated tabs for managing subscriptions, viewing orders, accessing invoices, and monitoring internet device status.
+- **Dashboard**: A centralized view with dedicated tabs for managing subscriptions, viewing orders, accessing invoices, monitoring internet device status, and submitting refund/credit requests (posted to external webhook at `app.lrlos.com`).
 - **Troubleshooting**: Automated line status checks, suspended line auto-restoration, escalation to support with Zendesk ticket creation (collecting contact method, phone, preferred call time, and detailed notes), and specific guidance for active lines, including detailed slow speed diagnostics. The "Internet Not Working" step also offers a "Contact Support" button for direct ticket creation.
 - **Early Payment Logging**: When customers use the Pay Early feature, the system logs both successful and failed payment attempts to the `early_payment_logs` database table (capturing customer email, subscription ID, plan info, terms charged, invoice ID, total amount, status, and error messages). On success, a comment is also added to the Chargebee subscription record for internal tracking.
 - **Admin Dashboard**: Secure admin login and dashboard with a **grouped sidebar navigation** organized into four sections: **Customer** (Feedback, Cancellations), **Subscriptions** (Pause Logs, Plan Changes, Add-on Logs, Early Payments), **Billing & Support** (Payment Analysis, Billing Resolutions, Service Issues), and **System** (API Logs, Nomad QR Access, Settings). Each section is collapsible with the active tab's section auto-expanded. Features include filtering, CSV export, and Zendesk Ticket Routing with live dropdowns for selecting Zendesk groups and agents.
@@ -43,4 +43,4 @@ The design adheres to Nomad Internet's official branding with a modern SaaS aest
 - **ThingSpace (Verizon)**: Device management, line status, plan information, device activation/deactivation.
 - **Twilio**: Sending OTP codes for phone and email verification.
 - **OpenAI GPT-4o**: Powering the JADA AI chatbot.
-- **`app.lrlos.com`**: External webhook for sending OTPs and activation requests.
+- **`app.lrlos.com`**: External webhook for sending OTPs, activation requests, and refund/credit request submissions (`/webhook/Nomados/submitrefund`).
