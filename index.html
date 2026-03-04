@@ -12,8 +12,20 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <!-- Start of nomadinternet-62070 Zendesk Widget script -->
-    <script id="ze-snippet" src="https://static.zdassets.com/ekr/snippet.js?key=75ecb87d-df32-44f6-8802-b5b581298a0d"> </script>
-    <!-- End of nomadinternet-62070 Zendesk Widget script -->
+    <script>
+      (function(d,t) {
+        var BASE_URL="https://chat.nomadjada.com";
+        var g=d.createElement(t),s=d.getElementsByTagName(t)[0];
+        g.src=BASE_URL+"/packs/js/sdk.js";
+        g.async = true;
+        s.parentNode.insertBefore(g,s);
+        g.onload=function(){
+          window.chatwootSDK.run({
+            websiteToken: 'vWRXNuwUZT2swn4sJ6B4xMbh',
+            baseUrl: BASE_URL
+          })
+        }
+      })(document,"script");
+    </script>
   </body>
 </html>

@@ -16,7 +16,7 @@ interface DeviceRecord {
   updatedAt: string
 }
 
-type AppView = 'home' | 'scan' | 'photo' | 'ocr_processing' | 'confirm' | 'saved' | 'search' | 'device_detail' | 'print_preview'
+type AppView = 'home' | 'capture' | 'ocr_processing' | 'confirm' | 'saved' | 'search' | 'device_detail'
 
 export default function NomadQRApp() {
   const navigate = useNavigate()
@@ -88,17 +88,6 @@ export default function NomadQRApp() {
     setView('home')
   }
 
-  const handleImeiSubmit = () => {
-    const cleaned = imei.replace(/\D/g, '')
-    if (cleaned.length < 14 || cleaned.length > 16) {
-      setError('IMEI must be 14-16 digits')
-      return
-    }
-    setImei(cleaned)
-    setError('')
-    setView('photo')
-  }
-
   const handlePhotoCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -126,10 +115,43 @@ export default function NomadQRApp() {
       const { data: { text } } = await worker.recognize(imageData)
       await worker.terminate()
 
-      const lines = text.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0)
+      const fullText = text
+      const lines = fullText.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0)
 
+      let detectedImei = ''
       let detectedSsid = ''
       let detectedPassword = ''
+
+      const imeiPattern = /\b(\d{14,16})\b/
+      for (const line of lines) {
+        const lowerLine = line.toLowerCase()
+        if (lowerLine.includes('imei') || lowerLine.includes('meid')) {
+          const colonIdx = line.indexOf(':')
+          if (colonIdx !== -1) {
+            const val = line.substring(colonIdx + 1).trim().replace(/\D/g, '')
+            if (val.length >= 14 && val.length <= 16) detectedImei = val
+          }
+        }
+        if (!detectedImei) {
+          const match = line.match(imeiPattern)
+          if (match && match[1].length >= 14 && match[1].length <= 16) {
+            detectedImei = match[1]
+          }
+        }
+      }
+
+      if (!detectedImei) {
+        for (const line of lines) {
+          const digitsOnly = line.replace(/\D/g, '')
+          if (digitsOnly.length === 15 && /^\d{15}$/.test(digitsOnly)) {
+            const lowerLine = line.toLowerCase()
+            if (!lowerLine.includes('iccid') && !lowerLine.includes('sim') && !lowerLine.includes('serial')) {
+              detectedImei = digitsOnly
+              break
+            }
+          }
+        }
+      }
 
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i]
@@ -155,7 +177,7 @@ export default function NomadQRApp() {
       }
 
       if (!detectedSsid && !detectedPassword) {
-        const alphaLines = lines.filter((l: string) => /[a-zA-Z0-9]/.test(l) && l.length >= 3)
+        const alphaLines = lines.filter((l: string) => /[a-zA-Z0-9]/.test(l) && l.length >= 3 && !/^\d{14,16}$/.test(l))
         if (alphaLines.length >= 2) {
           detectedSsid = alphaLines[0]
           detectedPassword = alphaLines[1]
@@ -164,12 +186,13 @@ export default function NomadQRApp() {
         }
       }
 
+      setImei(detectedImei)
       setSsid(detectedSsid)
       setPassword(detectedPassword)
       setView('confirm')
     } catch (err) {
       console.error('OCR failed:', err)
-      setError('OCR processing failed. Please enter credentials manually.')
+      setError('OCR processing failed. Please enter the details manually.')
       setView('confirm')
     }
   }
@@ -319,7 +342,7 @@ export default function NomadQRApp() {
         {view === 'home' && (
           <div className="grid gap-4 sm:grid-cols-2 max-w-lg mx-auto mt-8">
             <button
-              onClick={() => setView('scan')}
+              onClick={() => setView('capture')}
               className="bg-white rounded-xl border border-gray-200 p-6 text-center hover:shadow-md transition-shadow group"
             >
               <div className="w-14 h-14 rounded-full mx-auto mb-3 flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #10a37f 0%, #0d8a6a 100%)' }}>
@@ -329,7 +352,7 @@ export default function NomadQRApp() {
                 </svg>
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-1">Scan Device</h3>
-              <p className="text-sm text-gray-500">Enter IMEI &amp; capture sticker photo</p>
+              <p className="text-sm text-gray-500">Capture sticker photo to extract details</p>
             </button>
 
             <button
@@ -347,41 +370,11 @@ export default function NomadQRApp() {
           </div>
         )}
 
-        {view === 'scan' && (
-          <div className="max-w-md mx-auto mt-8">
-            <div className="bg-white rounded-xl border border-gray-200 p-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-1">Enter Device IMEI</h2>
-              <p className="text-sm text-gray-500 mb-6">Type or scan the IMEI barcode from the device</p>
-              <input
-                type="text"
-                value={imei}
-                onChange={(e) => setImei(e.target.value.replace(/[^0-9]/g, ''))}
-                placeholder="Enter 15-digit IMEI"
-                className="w-full px-4 py-3 text-lg border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono tracking-wider"
-                maxLength={16}
-                autoFocus
-                onKeyDown={(e) => e.key === 'Enter' && handleImeiSubmit()}
-              />
-              <p className="text-xs text-gray-400 mt-2">{imei.length}/15 digits</p>
-              <button
-                onClick={handleImeiSubmit}
-                disabled={imei.replace(/\D/g, '').length < 14}
-                className="w-full mt-4 py-3 text-white font-medium rounded-lg disabled:opacity-50"
-                style={{ background: 'linear-gradient(135deg, #10a37f 0%, #0d8a6a 100%)' }}
-              >
-                Next: Capture Sticker Photo
-              </button>
-              <button onClick={resetScanFlow} className="w-full mt-2 py-2 text-sm text-gray-500 hover:text-gray-700">Cancel</button>
-            </div>
-          </div>
-        )}
-
-        {view === 'photo' && (
+        {view === 'capture' && (
           <div className="max-w-md mx-auto mt-8">
             <div className="bg-white rounded-xl border border-gray-200 p-6 text-center">
               <h2 className="text-xl font-bold text-gray-900 mb-1">Capture Sticker Photo</h2>
-              <p className="text-sm text-gray-500 mb-2">IMEI: <span className="font-mono font-medium">{imei}</span></p>
-              <p className="text-sm text-gray-500 mb-6">Take a photo of the WiFi credentials sticker on the device</p>
+              <p className="text-sm text-gray-500 mb-6">Take a photo of the device sticker — we'll extract the IMEI, SSID, and password automatically</p>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -401,12 +394,12 @@ export default function NomadQRApp() {
                 <span className="text-sm font-medium text-gray-600">Tap to take photo or choose file</span>
               </button>
               <div className="mt-4 flex gap-2">
-                <button onClick={() => setView('scan')} className="flex-1 py-2 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg">Back</button>
+                <button onClick={resetScanFlow} className="flex-1 py-2 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg">Cancel</button>
                 <button
-                  onClick={() => { setView('confirm') }}
+                  onClick={() => setView('confirm')}
                   className="flex-1 py-2 text-sm text-gray-700 font-medium border border-gray-200 rounded-lg hover:bg-gray-50"
                 >
-                  Skip — Enter Manually
+                  Enter Manually
                 </button>
               </div>
             </div>
@@ -445,9 +438,14 @@ export default function NomadQRApp() {
                   <input
                     type="text"
                     value={imei}
-                    disabled
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-600 font-mono"
+                    onChange={(e) => setImei(e.target.value.replace(/[^0-9]/g, ''))}
+                    placeholder="Enter 15-digit IMEI"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
+                    maxLength={16}
                   />
+                  {imei && (imei.length < 14 || imei.length > 16) && (
+                    <p className="text-xs text-red-500 mt-1">IMEI must be 14-16 digits ({imei.length} entered)</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Network Name (SSID)</label>
@@ -474,13 +472,13 @@ export default function NomadQRApp() {
 
               <button
                 onClick={handleSave}
-                disabled={saving || !ssid.trim() || !password.trim()}
+                disabled={saving || !imei.trim() || imei.length < 14 || !ssid.trim() || !password.trim()}
                 className="w-full mt-6 py-3 text-white font-medium rounded-lg disabled:opacity-50"
                 style={{ background: 'linear-gradient(135deg, #10a37f 0%, #0d8a6a 100%)' }}
               >
                 {saving ? 'Saving...' : 'Save Device Record'}
               </button>
-              <button onClick={() => setView('photo')} className="w-full mt-2 py-2 text-sm text-gray-500 hover:text-gray-700">
+              <button onClick={() => setView('capture')} className="w-full mt-2 py-2 text-sm text-gray-500 hover:text-gray-700">
                 Retake Photo
               </button>
             </div>
